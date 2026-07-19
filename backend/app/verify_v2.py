@@ -18,6 +18,7 @@ from . import inbound, lifecycle
 from .db import get_session, get_settings
 from .errors import TwilioError, not_found
 from .models import Verification, VerifyService, utcnow
+from .pagination import meta_page
 from .twilio_api import parse_bool, require_basic_auth
 from .ws import manager
 
@@ -128,22 +129,12 @@ async def create_service(
 @router.get("")
 @router.get("/", include_in_schema=False)
 def list_services(
+    request: Request,
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
     services = session.exec(select(VerifyService).order_by(col(VerifyService.sid))).all()
-    return {
-        "services": [service_to_json(s) for s in services],
-        "meta": {
-            "page": 0,
-            "page_size": 50,
-            "first_page_url": "/v2/Services?PageSize=50&Page=0",
-            "previous_page_url": None,
-            "next_page_url": None,
-            "url": "/v2/Services?PageSize=50&Page=0",
-            "key": "services",
-        },
-    }
+    return meta_page(request, [service_to_json(s) for s in services], "services", "/v2/Services")
 
 
 @router.get("/{service_sid}")

@@ -11,6 +11,7 @@ from sqlmodel import Session, col, select
 from .db import get_session, get_settings
 from .errors import TwilioError, not_found
 from .models import MessagingService, ServiceSender, utcnow
+from .pagination import meta_page
 from .twilio_api import parse_bool, require_basic_auth
 
 router = APIRouter(prefix="/v1/Services")
@@ -156,22 +157,12 @@ async def create_service(
 @router.get("")
 @router.get("/", include_in_schema=False)
 def list_services(
+    request: Request,
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
     services = session.exec(select(MessagingService).order_by(col(MessagingService.sid))).all()
-    return {
-        "services": [service_to_json(s) for s in services],
-        "meta": {
-            "page": 0,
-            "page_size": 50,
-            "first_page_url": "/v1/Services?PageSize=50&Page=0",
-            "previous_page_url": None,
-            "next_page_url": None,
-            "url": "/v1/Services?PageSize=50&Page=0",
-            "key": "services",
-        },
-    }
+    return meta_page(request, [service_to_json(s) for s in services], "services", "/v1/Services")
 
 
 @router.get("/{service_sid}")
@@ -245,7 +236,7 @@ def _add_sender(session: Session, service_sid: str, kind: str, value: str) -> di
     return data
 
 
-def _list_senders(session: Session, service_sid: str, kind: str) -> dict:
+def _list_senders(request: Request, session: Session, service_sid: str, kind: str) -> dict:
     _get_service(session, service_sid)
     senders = [s for s in pool_for(session, service_sid) if s.kind == kind]
     account_sid = _account_sid(session)
@@ -256,18 +247,7 @@ def _list_senders(session: Session, service_sid: str, kind: str) -> dict:
         items.append(data)
     meta_key = SENDER_KINDS[kind]["key"]
     path = f"/v1/Services/{service_sid}/{SENDER_KINDS[kind]['path']}"
-    return {
-        meta_key: items,
-        "meta": {
-            "page": 0,
-            "page_size": 50,
-            "first_page_url": f"{path}?PageSize=50&Page=0",
-            "previous_page_url": None,
-            "next_page_url": None,
-            "url": f"{path}?PageSize=50&Page=0",
-            "key": meta_key,
-        },
-    }
+    return meta_page(request, items, meta_key, path)
 
 
 def _delete_sender(session: Session, service_sid: str, sender_sid: str) -> None:
@@ -297,10 +277,11 @@ async def add_phone_number(
 @router.get("/{service_sid}/PhoneNumbers")
 def list_phone_numbers(
     service_sid: str,
+    request: Request,
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
-    return _list_senders(session, service_sid, "phone_number")
+    return _list_senders(request, session, service_sid, "phone_number")
 
 
 @router.delete("/{service_sid}/PhoneNumbers/{sender_sid}", status_code=204)
@@ -333,10 +314,11 @@ async def add_alpha_sender(
 @router.get("/{service_sid}/AlphaSenders")
 def list_alpha_senders(
     service_sid: str,
+    request: Request,
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
-    return _list_senders(session, service_sid, "alpha_sender")
+    return _list_senders(request, session, service_sid, "alpha_sender")
 
 
 @router.delete("/{service_sid}/AlphaSenders/{sender_sid}", status_code=204)
@@ -366,10 +348,11 @@ async def add_short_code(
 @router.get("/{service_sid}/ShortCodes")
 def list_short_codes(
     service_sid: str,
+    request: Request,
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
-    return _list_senders(session, service_sid, "short_code")
+    return _list_senders(request, session, service_sid, "short_code")
 
 
 @router.delete("/{service_sid}/ShortCodes/{sender_sid}", status_code=204)

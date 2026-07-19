@@ -7,6 +7,7 @@ WebhookDelivery log, success or failure.
 import json
 import time
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import httpx
 from sqlmodel import Session
@@ -48,19 +49,32 @@ async def deliver(
     url: str,
     params: dict[str, str],
     message_sid: str | None = None,
+    method: str = "POST",
 ) -> WebhookDelivery:
-    """POST form-encoded params to url, signed; record the attempt in the log."""
+    """Send signed params to url (form-encoded POST, or query-string GET);
+    record the attempt in the log.
+
+    Signature rules match Twilio: POST signs url + sorted key/value pairs;
+    GET signs the full URL including the query string, with nothing appended.
+    """
     with Session(get_engine()) as session:
         auth_token = get_settings(session).auth_token
 
-    headers = {"X-Twilio-Signature": compute_signature(auth_token, url, params)}
+    method = (method or "POST").upper()
     started = time.monotonic()
     response_status: int | None = None
     response_body: str | None = None
     error: str | None = None
     try:
         async with httpx.AsyncClient(transport=_transport, timeout=10) as client:
-            response = await client.post(url, data=params, headers=headers)
+            if method == "GET":
+                joiner = "&" if "?" in url else "?"
+                full_url = url + joiner + urlencode(params)
+                headers = {"X-Twilio-Signature": compute_signature(auth_token, full_url, {})}
+                response = await client.get(full_url, headers=headers)
+            else:
+                headers = {"X-Twilio-Signature": compute_signature(auth_token, url, params)}
+                response = await client.post(url, data=params, headers=headers)
         response_status = response.status_code
         response_body = response.text[:RESPONSE_BODY_LIMIT]
     except Exception as exc:
@@ -69,6 +83,7 @@ async def deliver(
     delivery = WebhookDelivery(
         kind=kind,
         url=url,
+        method=method,
         request_params=json.dumps(params),
         response_status=response_status,
         response_body=response_body,

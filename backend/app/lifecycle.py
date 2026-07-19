@@ -22,8 +22,8 @@ from .db import get_engine, get_settings
 from .models import Message, MessagingService, utcnow
 from .ws import manager
 
-TERMINAL_STATUSES = {"delivered", "undelivered", "failed", "received", "canceled"}
-CALLBACK_STATUSES = {"queued", "sending", "sent", "delivered", "undelivered", "failed"}
+TERMINAL_STATUSES = {"delivered", "undelivered", "failed", "received", "canceled", "read"}
+CALLBACK_STATUSES = {"queued", "sending", "sent", "delivered", "undelivered", "failed", "read"}
 PRICE_PER_SEGMENT = 0.0075
 
 ERROR_MESSAGES = {
@@ -87,6 +87,8 @@ def _next_transition(
         if failure_rate > 0 and random.random() < failure_rate:
             return "undelivered", 30008
         return "delivered", None
+    if message.status == "delivered" and message.channel == "whatsapp":
+        return "read", None
     return None
 
 
@@ -94,7 +96,11 @@ async def _run(sid: str) -> None:
     while True:
         with Session(get_engine()) as session:
             message = session.exec(select(Message).where(Message.sid == sid)).first()
-            if message is None or message.status in TERMINAL_STATUSES:
+            if message is None:
+                return
+            # delivered is terminal for SMS/MMS; WhatsApp gets one more hop to read.
+            whatsapp_read_pending = message.status == "delivered" and message.channel == "whatsapp"
+            if message.status in TERMINAL_STATUSES and not whatsapp_read_pending:
                 return
             settings = get_settings(session)
             forced_rules = json.loads(settings.forced_rules or "[]")

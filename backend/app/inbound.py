@@ -15,7 +15,7 @@ from sqlmodel import Session, col, select
 
 from . import lifecycle, media, optout, webhooks
 from .db import get_settings
-from .models import Message, MessagingService, WebhookDelivery
+from .models import IncomingPhoneNumber, Message, MessagingService, WebhookDelivery
 from .segments import segment_count
 from .twiml import looks_like_twiml, parse_twiml
 from .ws import manager
@@ -184,16 +184,32 @@ async def handle_reply(
     config = optout.load_config(session)
     optout_type = optout.match_keyword(body, config)
 
-    # Inbound messages to a service-managed number carry its MessagingServiceSid
-    # and can route to the service's InboundRequestUrl instead of the global one.
+    # Webhook routing precedence (mirrors Twilio): Messaging Service
+    # InboundRequestUrl (unless UseInboundWebhookOnNumber) > the receiving
+    # number's SmsUrl (IncomingPhoneNumbers config) > the global settings URL.
     service = service_for_thread(session, number)
+    number_config = session.exec(
+        select(IncomingPhoneNumber).where(IncomingPhoneNumber.phone_number == app_number)
+    ).first()
+
     webhook_url = settings.inbound_webhook_url
+    webhook_method = settings.inbound_webhook_method
+    fallback_url: str | None = None
+    fallback_method = "POST"
+    if number_config is not None and number_config.sms_url:
+        webhook_url = number_config.sms_url
+        webhook_method = number_config.sms_method
+        fallback_url = number_config.sms_fallback_url
+        fallback_method = number_config.sms_fallback_method
     if (
         service is not None
         and service.inbound_request_url
         and not service.use_inbound_webhook_on_number
     ):
         webhook_url = service.inbound_request_url
+        webhook_method = service.inbound_method
+        fallback_url = service.fallback_url
+        fallback_method = service.fallback_method
 
     message = await record_message(
         session,
@@ -247,7 +263,17 @@ async def handle_reply(
             geo_params,
             optout_type,
         )
-        delivery = await webhooks.deliver("inbound", webhook_url, params, message.sid)
+        delivery = await webhooks.deliver(
+            "inbound", webhook_url, params, message.sid, method=webhook_method
+        )
+        failed = delivery.error is not None or not (
+            delivery.response_status is not None and 200 <= delivery.response_status < 300
+        )
+        if failed and fallback_url:
+            # Twilio calls the fallback URL when the primary handler errors.
+            delivery = await webhooks.deliver(
+                "inbound", fallback_url, params, message.sid, method=fallback_method
+            )
         await _handle_twiml_response(session, delivery, number, app_number)
 
     return message

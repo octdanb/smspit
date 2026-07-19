@@ -93,6 +93,9 @@ class Settings(SQLModel, table=True):
     lookup_line_types: str = "{}"
     # Strict mode (phase 8) — everything defaults to permissive.
     strict_auth: bool = False  # Basic creds must match account_sid/auth_token (20003)
+    # API key pair also accepted by strict_auth when set (phase 9).
+    api_key_sid: str = ""
+    api_key_secret: str = ""
     strict_validation: bool = False  # E.164 To/From checks (21211/21212), landline 21614
     trial_mode: bool = False  # sends allowed only to verified_numbers (21608)
     verified_numbers: str = "[]"  # JSON list of E.164 numbers, used by trial_mode
@@ -169,6 +172,24 @@ class Verification(SQLModel, table=True):
     date_updated: datetime = Field(default_factory=utcnow)
 
 
+class IncomingPhoneNumber(SQLModel, table=True):
+    """A provisioned app number (Twilio IncomingPhoneNumber, PN…) with its
+    per-number webhook configuration."""
+
+    sid: str = Field(primary_key=True)
+    account_sid: str
+    phone_number: str = Field(index=True)
+    friendly_name: str = ""
+    sms_url: str | None = None
+    sms_method: str = "POST"
+    sms_fallback_url: str | None = None
+    sms_fallback_method: str = "POST"
+    status_callback: str | None = None
+    status_callback_method: str = "POST"
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
+
+
 class MediaItem(SQLModel, table=True):
     """An MMS attachment (Twilio Media resource). Bytes are fetched lazily."""
 
@@ -199,6 +220,7 @@ class WebhookDelivery(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     kind: str  # status_callback | inbound
     url: str
+    method: str = "POST"
     request_params: str = "{}"  # JSON of the form params sent
     response_status: int | None = None
     response_body: str | None = None
