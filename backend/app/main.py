@@ -8,11 +8,13 @@ from . import internal_api, twilio_api, ws
 from .config import config
 from .db import init_db
 from .errors import TwilioError, twilio_error_handler
+from .lifecycle import resume_pending
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    resume_pending()
     yield
 
 

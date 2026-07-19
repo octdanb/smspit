@@ -1,12 +1,15 @@
 """Internal REST API used by the dashboard and test automation."""
 
+import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlmodel import Session, col, delete, func, or_, select
 
-from .db import get_session
-from .models import Message
+from . import webhooks
+from .db import get_session, get_settings
+from .models import Message, WebhookDelivery
 from .ws import manager
 
 router = APIRouter(prefix="/api")
@@ -95,6 +98,102 @@ def thread_messages(
         "page": page,
         "page_size": page_size,
     }
+
+
+def settings_to_json(settings) -> dict:
+    return {
+        "inbound_webhook_url": settings.inbound_webhook_url,
+        "inbound_webhook_method": settings.inbound_webhook_method,
+        "account_sid": settings.account_sid,
+        "auth_token": settings.auth_token,
+        "simulate_delivery": settings.simulate_delivery,
+        "status_delay_ms": settings.status_delay_ms,
+        "failure_rate": settings.failure_rate,
+        "forced_rules": json.loads(settings.forced_rules or "[]"),
+    }
+
+
+class ForcedRule(BaseModel):
+    to_suffix: str
+    status: str = "undelivered"  # undelivered | failed
+    error_code: int = 30008
+
+
+class SettingsUpdate(BaseModel):
+    inbound_webhook_url: str | None = None
+    inbound_webhook_method: str | None = None
+    account_sid: str | None = None
+    auth_token: str | None = None
+    simulate_delivery: bool | None = None
+    status_delay_ms: int | None = None
+    failure_rate: float | None = None
+    forced_rules: list[ForcedRule] | None = None
+
+
+@router.get("/settings")
+def read_settings(session: Session = Depends(get_session)) -> dict:
+    return settings_to_json(get_settings(session))
+
+
+@router.put("/settings")
+def update_settings(payload: SettingsUpdate, session: Session = Depends(get_session)) -> dict:
+    settings = get_settings(session)
+    data = payload.model_dump(exclude_unset=True)
+    for key, value in data.items():
+        if key == "forced_rules":
+            settings.forced_rules = json.dumps(value)
+        else:
+            setattr(settings, key, value)
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
+    return settings_to_json(settings)
+
+
+def delivery_to_json(delivery: WebhookDelivery) -> dict:
+    return {
+        "id": delivery.id,
+        "kind": delivery.kind,
+        "url": delivery.url,
+        "request_params": json.loads(delivery.request_params or "{}"),
+        "response_status": delivery.response_status,
+        "response_body": delivery.response_body,
+        "duration_ms": delivery.duration_ms,
+        "error": delivery.error,
+        "message_sid": delivery.message_sid,
+        "created_at": iso(delivery.created_at),
+    }
+
+
+@router.get("/webhook-log")
+def webhook_log(
+    session: Session = Depends(get_session),
+    page: int = Query(0, ge=0),
+    page_size: int = Query(50, ge=1, le=500),
+) -> dict:
+    total = session.exec(select(func.count()).select_from(WebhookDelivery)).one()
+    deliveries = session.exec(
+        select(WebhookDelivery)
+        .order_by(col(WebhookDelivery.id).desc())
+        .offset(page * page_size)
+        .limit(page_size)
+    ).all()
+    return {
+        "deliveries": [delivery_to_json(d) for d in deliveries],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.post("/webhook-log/{delivery_id}/retry")
+async def retry_webhook(delivery_id: int, session: Session = Depends(get_session)) -> dict:
+    delivery = session.get(WebhookDelivery, delivery_id)
+    if delivery is None:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    params = json.loads(delivery.request_params or "{}")
+    new_delivery = await webhooks.deliver(delivery.kind, delivery.url, params, delivery.message_sid)
+    return delivery_to_json(new_delivery)
 
 
 @router.delete("/messages", status_code=204)

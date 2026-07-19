@@ -10,11 +10,23 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as WebhooksRouteImport } from './routes/webhooks'
 import { Route as NumbersNumberRouteImport } from './routes/numbers.$number'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WebhooksRoute = WebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NumbersNumberRoute = NumbersNumberRouteImport.update({
@@ -25,27 +37,35 @@ const NumbersNumberRoute = NumbersNumberRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
+  '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
+  '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
+  '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/numbers/$number'
+  fullPaths: '/' | '/settings' | '/webhooks' | '/numbers/$number'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/numbers/$number'
-  id: '__root__' | '/' | '/numbers/$number'
+  to: '/' | '/settings' | '/webhooks' | '/numbers/$number'
+  id: '__root__' | '/' | '/settings' | '/webhooks' | '/numbers/$number'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SettingsRoute: typeof SettingsRoute
+  WebhooksRoute: typeof WebhooksRoute
   NumbersNumberRoute: typeof NumbersNumberRoute
 }
 
@@ -56,6 +76,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/webhooks': {
+      id: '/webhooks'
+      path: '/webhooks'
+      fullPath: '/webhooks'
+      preLoaderRoute: typeof WebhooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/numbers/$number': {
@@ -70,6 +104,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRoute: SettingsRoute,
+  WebhooksRoute: WebhooksRoute,
   NumbersNumberRoute: NumbersNumberRoute,
 }
 export const routeTree = rootRouteImport

@@ -25,3 +25,16 @@ def init_db() -> None:
 def get_session() -> Iterator[Session]:
     with Session(get_engine()) as session:
         yield session
+
+
+def get_settings(session: Session):
+    """Fetch the singleton Settings row, creating it on first access."""
+    from .models import Settings
+
+    settings = session.get(Settings, 1)
+    if settings is None:
+        settings = Settings(id=1)
+        session.add(settings)
+        session.commit()
+        session.refresh(settings)
+    return settings

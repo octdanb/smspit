@@ -50,3 +50,24 @@ class Settings(SQLModel, table=True):
     inbound_webhook_method: str = "POST"
     account_sid: str = "AC00000000000000000000000000000000"
     auth_token: str = "smspit-auth-token"
+    # Delivery lifecycle simulation (phase 4).
+    simulate_delivery: bool = True
+    status_delay_ms: int = 300  # delay between each status transition
+    failure_rate: float = 0.0  # 0..1 chance an otherwise-fine message goes undelivered
+    # JSON list of {"to_suffix": str, "status": "undelivered"|"failed", "error_code": int}
+    forced_rules: str = "[]"
+
+
+class WebhookDelivery(SQLModel, table=True):
+    """Log of every outbound webhook attempt (status callbacks, inbound messages)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    kind: str  # status_callback | inbound
+    url: str
+    request_params: str = "{}"  # JSON of the form params sent
+    response_status: int | None = None
+    response_body: str | None = None
+    duration_ms: int = 0
+    error: str | None = None
+    message_sid: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)

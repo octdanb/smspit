@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { MessageSquareText } from "lucide-react";
+import { MessageSquareText, Settings, Webhook } from "lucide-react";
 
 import { useLiveUpdates, type LiveStatus } from "@/api/ws";
 import { NumberSidebar } from "@/components/number-sidebar";
@@ -28,8 +28,24 @@ function RootLayout() {
         <span className="text-sm text-muted-foreground">
           Twilio-compatible SMS mock
         </span>
+        <nav className="ml-auto flex items-center gap-1">
+          <Link
+            to="/webhooks"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
+          >
+            <Webhook className="size-4" />
+            Webhooks
+          </Link>
+          <Link
+            to="/settings"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
+          >
+            <Settings className="size-4" />
+            Settings
+          </Link>
+        </nav>
         <span
-          className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground"
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
           title="Dashboard live-update connection"
         >
           <span

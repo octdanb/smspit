@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, col, select
 
-from .db import get_session
+from . import lifecycle
+from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
-from .models import Message
+from .models import Message, utcnow
 from .segments import segment_count
 from .ws import manager
 
@@ -125,6 +126,17 @@ async def create_message(
     smart_encoded = parse_bool(single.get("SmartEncoded"))
     encoding, num_segments = segment_count(body, smart_encoded=smart_encoded)
 
+    schedule_type = single.get("ScheduleType") or None
+    send_at = None
+    status = "queued"
+    if schedule_type is not None:
+        if schedule_type != "fixed":
+            raise TwilioError(20001, "ScheduleType must be 'fixed'.")
+        if not single.get("SendAt"):
+            raise TwilioError(20001, "SendAt is required when ScheduleType is provided.")
+        send_at = parse_filter_dt(single["SendAt"])
+        status = "scheduled"
+
     is_mms = bool(media_urls) or parse_bool(single.get("SendAsMms"))
     channel = "whatsapp" if to.startswith("whatsapp:") else ("mms" if is_mms else "sms")
 
@@ -135,7 +147,9 @@ async def create_message(
         from_number=from_,
         to_number=to,
         body=body,
-        status="queued",
+        status=status,
+        schedule_type=schedule_type,
+        send_at=send_at,
         num_segments=num_segments,
         num_media=len(media_urls),
         encoding=encoding,
@@ -156,6 +170,8 @@ async def create_message(
         "message.created",
         {"number": counterparty(message), "message": message_to_internal(message)},
     )
+    if get_settings(session).simulate_delivery:
+        lifecycle.start(message.sid)
     return message_to_json(message)
 
 
@@ -246,3 +262,64 @@ def fetch_message(
     if message is None:
         raise not_found(f"2010-04-01/Accounts/{account_sid}/Messages/{sid}.json")
     return message_to_json(message)
+
+
+@router.post("/2010-04-01/Accounts/{account_sid}/Messages/{sid}.json")
+async def update_message(
+    account_sid: str,
+    sid: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> dict:
+    """Twilio message updates: Body="" redacts; Status=canceled cancels a scheduled send."""
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise not_found(f"2010-04-01/Accounts/{account_sid}/Messages/{sid}.json")
+
+    form = await request.form()
+    if "Status" in form:
+        if str(form["Status"]).lower() != "canceled":
+            raise TwilioError(20001, "Status can only be updated to 'canceled'.")
+        if message.status != "scheduled":
+            raise TwilioError(20001, "Only messages with status 'scheduled' can be canceled.")
+        message.status = "canceled"
+    elif "Body" in form:
+        if form["Body"] != "":
+            raise TwilioError(
+                20001, "Body can only be updated to an empty string (message redaction)."
+            )
+        message.body = ""
+    else:
+        raise TwilioError(20001, "No updatable parameter provided (Body or Status).")
+
+    message.date_updated = utcnow()
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+
+    await manager.broadcast(
+        "message.status_changed",
+        {"number": counterparty(message), "message": message_to_internal(message)},
+    )
+    return message_to_json(message)
+
+
+@router.delete("/2010-04-01/Accounts/{account_sid}/Messages/{sid}.json", status_code=204)
+async def delete_message(
+    account_sid: str,
+    sid: str,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> None:
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise not_found(f"2010-04-01/Accounts/{account_sid}/Messages/{sid}.json")
+    if message.status not in lifecycle.TERMINAL_STATUSES:
+        raise TwilioError(
+            20009, "Cannot delete this resource before it is complete", http_status=409
+        )
+    number = counterparty(message)
+    session.delete(message)
+    session.commit()
+    await manager.broadcast("messages.cleared", {"number": number})

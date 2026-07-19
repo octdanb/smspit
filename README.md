@@ -36,6 +36,9 @@ local development; only Docker for `just up`.
 
 ## Status
 
-Phase 1 (scaffold) — project layout, health check, dashboard shell, Docker image, and test
-harnesses. The Twilio-compatible endpoints land in subsequent phases per
-[SPEC.md §12](SPEC.md#12-build-phases).
+Phases 1–4 complete: message capture (send/list/fetch with Twilio-shaped resources, pagination,
+segment math), live dashboard updates over WebSocket, delivery lifecycle simulation
+(queued → sending → sent → delivered, configurable delays/failures), status callbacks signed
+with X-Twilio-Signature, webhook delivery log with retry, message update (redact/cancel) and
+delete, and scheduled sends. Next per [SPEC.md §12](SPEC.md#12-build-phases): two-way messaging
+(replies + inbound webhooks + TwiML), verification/OTP support, Messaging Services, Lookup.

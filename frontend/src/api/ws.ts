@@ -28,6 +28,9 @@ export function handleWsEvent(queryClient: QueryClient, event: WsEvent): void {
         queryKey: number ? ["thread", number] : ["thread"],
       });
       break;
+    case "webhook.delivered":
+      queryClient.invalidateQueries({ queryKey: ["webhook-log"] });
+      break;
   }
 }
 
