@@ -1,5 +1,5 @@
 # Stage 1: build the React dashboard with pnpm (pinned via packageManager)
-FROM node:22-alpine AS frontend
+FROM node:26-alpine AS frontend
 ENV CI=true
 RUN corepack enable
 WORKDIR /build
