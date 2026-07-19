@@ -54,7 +54,7 @@ export function MessageDetail({
   return (
     <aside
       data-testid="message-detail"
-      className="flex w-96 shrink-0 flex-col overflow-y-auto border-l bg-muted/20"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-background md:static md:z-auto md:w-96 md:shrink-0 md:border-l md:bg-muted/20"
     >
       <header className="flex items-center justify-between border-b px-3 py-2">
         <h3 className="text-sm font-semibold">Message detail</h3>

@@ -109,6 +109,43 @@ test("tags: auto-tag rule chips filter the sidebar", async ({ page }) => {
   await expect(sidebar.getByText(tagged)).toBeVisible();
 });
 
+test.describe("mobile (375px)", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
+
+  test("inbox → thread → back works full-width with no sideways scroll", async ({
+    page,
+  }) => {
+    const to = uniqueNumber();
+    await sendSms(to, "mobile check");
+
+    await page.goto("/");
+    const overflowing = () =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+      );
+    expect(await overflowing()).toBe(false);
+
+    // Tapping a number replaces the inbox with the full-width thread.
+    await page.locator("aside").getByText(to).click();
+    await expect(
+      page.locator('[data-testid="message-bubble"]').first(),
+    ).toBeVisible();
+    await expect(page.locator("aside")).toBeHidden();
+    expect(await overflowing()).toBe(false);
+
+    // The detail drawer covers the screen as an overlay.
+    await page.locator('[data-testid="message-bubble"]').first().click();
+    await expect(page.getByTestId("message-detail")).toBeVisible();
+    await page.getByTitle("Close").click();
+
+    // Back returns to the inbox list.
+    await page.getByTitle("Back to inbox").click();
+    await expect(page.locator("aside")).toBeVisible();
+  });
+});
+
 test("message detail drawer shows the Twilio resource", async ({ page }) => {
   const to = uniqueNumber();
   const sent = await sendSms(to, "inspect me");

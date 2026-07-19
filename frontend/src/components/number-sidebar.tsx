@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export function NumberSidebar() {
+export function NumberSidebar({ className }: { className?: string }) {
   const [search, setSearch] = useState("");
   // Kept fresh by WebSocket-driven invalidation (see api/ws.ts). The search
   // runs server-side across full message bodies, not just previews.
@@ -22,7 +22,12 @@ export function NumberSidebar() {
   const filtered = numbers.data ?? [];
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-r">
+    <aside
+      className={cn(
+        "w-full shrink-0 flex-col border-r md:w-80",
+        className ?? "flex",
+      )}
+    >
       <div className="relative border-b p-3">
         <Search className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input

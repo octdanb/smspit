@@ -162,6 +162,21 @@ Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/)
 [caddy](https://caddyserver.com/docs/install) (`apt install caddy` / `brew install caddy`) for
 local development; only Docker for `just up`.
 
+## Hosting a shared instance (UAT)
+
+smspit works well as a shared UAT service (e.g. `sms.project-name.uat.octave.nz`) so
+integration environments can exercise the full Twilio flow without real credentials:
+
+1. Deploy the container behind your TLS-terminating ingress, pointing the UAT app's
+   `TWILIO_API_BASE_URL` at it.
+2. Set `SMSPIT_DASHBOARD_TOKEN` so only the team can open the dashboard/internal API
+   (Twilio-shaped routes and `/api/health` stay open for the app under test and probes).
+3. Set `public_base_url` in settings to the public URL so MMS media links in webhooks resolve.
+4. Mount `/data` on a persistent volume, and consider retention settings for long-lived
+   instances.
+
+The dashboard is responsive, so testers can check OTPs and threads from a phone.
+
 ## CI & Releases
 
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs on every PR:
