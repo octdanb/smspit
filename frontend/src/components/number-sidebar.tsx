@@ -11,11 +11,8 @@ import { cn } from "@/lib/utils";
 
 export function NumberSidebar() {
   const [search, setSearch] = useState("");
-  const numbers = useQuery({
-    queryKey: ["numbers"],
-    queryFn: fetchNumbers,
-    refetchInterval: 3000, // polling until WebSocket events land (phase 3)
-  });
+  // Kept fresh by WebSocket-driven invalidation (see api/ws.ts).
+  const numbers = useQuery({ queryKey: ["numbers"], queryFn: fetchNumbers });
 
   const filtered = (numbers.data ?? []).filter(
     (entry) =>

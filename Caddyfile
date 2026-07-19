@@ -1,0 +1,18 @@
+# Dev reverse proxy: one port (8025) for everything, matching the production
+# container. API-shaped paths go to uvicorn; everything else (dashboard, HMR
+# websocket) goes to the Vite dev server. `just dev` runs this via `caddy run`.
+
+{
+	admin off
+	auto_https off
+}
+
+:8025 {
+	@backend path /api/* /2010-04-01/* /v1/* /v2/* /docs /docs/* /openapi.json
+	handle @backend {
+		reverse_proxy localhost:8825
+	}
+	handle {
+		reverse_proxy localhost:5173
+	}
+}

@@ -20,13 +20,19 @@ just up        # docker compose — dashboard + API on http://localhost:8025
 Development:
 
 ```sh
-just dev       # backend (uvicorn :8025) + frontend (vite :5173)
+just dev       # everything on http://localhost:8025 (Caddy → uvicorn :8825 + vite :5173)
 just test      # pytest + vitest
 just lint      # ruff + oxlint
 ```
 
-Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), and Node 22+
-for local development; only Docker for `just up`.
+`just dev` fronts the API and the Vite dev server (with HMR) through
+[Caddy](https://caddyserver.com/) on a single port, so dev looks exactly like the production
+container: everything on `http://localhost:8025`. Hitting the Vite server directly on `:5173`
+also works (it proxies API paths to the backend).
+
+Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), Node 22+, and
+[caddy](https://caddyserver.com/docs/install) (`apt install caddy` / `brew install caddy`) for
+local development; only Docker for `just up`.
 
 ## Status
 

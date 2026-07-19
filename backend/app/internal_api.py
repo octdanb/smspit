@@ -7,6 +7,7 @@ from sqlmodel import Session, col, delete, func, or_, select
 
 from .db import get_session
 from .models import Message
+from .ws import manager
 
 router = APIRouter(prefix="/api")
 
@@ -97,16 +98,18 @@ def thread_messages(
 
 
 @router.delete("/messages", status_code=204)
-def clear_all_messages(session: Session = Depends(get_session)) -> None:
+async def clear_all_messages(session: Session = Depends(get_session)) -> None:
     session.exec(delete(Message))
     session.commit()
+    await manager.broadcast("messages.cleared", {"number": None})
 
 
 @router.delete("/numbers/{number}/messages", status_code=204)
-def clear_thread(number: str, session: Session = Depends(get_session)) -> None:
+async def clear_thread(number: str, session: Session = Depends(get_session)) -> None:
     session.exec(
         delete(Message).where(
             or_(col(Message.to_number) == number, col(Message.from_number) == number)
         )
     )
     session.commit()
+    await manager.broadcast("messages.cleared", {"number": number})

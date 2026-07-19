@@ -5,7 +5,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
-const BACKEND = process.env.SMSPIT_BACKEND_URL ?? "http://localhost:8025";
+// In dev the backend runs on 8825 (Caddy fronts everything on 8025); the
+// proxy below keeps direct :5173 access working too.
+const BACKEND = process.env.SMSPIT_BACKEND_URL ?? "http://localhost:8825";
 
 // https://vite.dev/config/
 export default defineConfig({

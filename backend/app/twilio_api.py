@@ -12,8 +12,10 @@ from sqlmodel import Session, col, select
 
 from .db import get_session
 from .errors import TwilioError, auth_error, not_found
+from .internal_api import counterparty, message_to_internal
 from .models import Message
 from .segments import segment_count
+from .ws import manager
 
 router = APIRouter()
 
@@ -149,6 +151,11 @@ async def create_message(
     session.add(message)
     session.commit()
     session.refresh(message)
+
+    await manager.broadcast(
+        "message.created",
+        {"number": counterparty(message), "message": message_to_internal(message)},
+    )
     return message_to_json(message)
 
 

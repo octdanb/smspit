@@ -15,10 +15,10 @@ function ThreadView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // Kept fresh by WebSocket-driven invalidation (see api/ws.ts).
   const thread = useQuery({
     queryKey: ["thread", number],
     queryFn: () => fetchThread(number),
-    refetchInterval: 3000, // polling until WebSocket events land (phase 3)
   });
 
   const clear = useMutation({

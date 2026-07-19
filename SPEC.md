@@ -492,6 +492,7 @@ Inbox-style layout, dark mode supported:
 │   └── ...
 ├── Dockerfile                 # multi-stage: build frontend → copy into python image
 ├── compose.yaml
+├── Caddyfile                  # dev proxy: one port for API + Vite dev server
 ├── justfile
 ├── README.md
 └── SPEC.md
@@ -499,8 +500,10 @@ Inbox-style layout, dark mode supported:
 
 ## 11. Justfile Recipes
 
-- `just dev` — run backend (uvicorn --reload) + frontend (vite dev, proxy `/api`, `/2010-04-01`,
-  `/v1`, `/v2` to backend)
+- `just dev` — run backend (uvicorn --reload on :8825) + frontend (vite dev on :5173) behind
+  Caddy on :8025 (see `Caddyfile`), so dev serves everything on one port exactly like the
+  production container; Vite also proxies `/api`, `/2010-04-01`, `/v1`, `/v2` for direct :5173
+  access
 - `just test` — pytest + vitest
 - `just build` — docker build
 - `just up` / `just down` — compose up/down
