@@ -1,6 +1,6 @@
 """WebSocket event hub: pushes dashboard-relevant events to connected clients.
 
-Events (see SPEC §7): message.created, message.status_changed, messages.cleared.
+Events: message.created, message.status_changed, messages.cleared.
 Payloads carry the internal (dashboard) message shape, not the Twilio shape.
 """
 

@@ -72,13 +72,13 @@ class Settings(SQLModel, table=True):
     inbound_webhook_method: str = "POST"
     account_sid: str = "AC00000000000000000000000000000000"
     auth_token: str = "smspit-auth-token"
-    # Delivery lifecycle simulation (phase 4).
+    # Delivery lifecycle simulation.
     simulate_delivery: bool = True
     status_delay_ms: int = 300  # delay between each status transition
     failure_rate: float = 0.0  # 0..1 chance an otherwise-fine message goes undelivered
     # JSON list of {"to_suffix": str, "status": "undelivered"|"failed", "error_code": int}
     forced_rules: str = "[]"
-    # Two-way messaging (phase 5).
+    # Two-way messaging.
     public_base_url: str = "http://localhost:8025"  # used for media URLs in webhooks
     enforce_optouts: bool = False  # reject sends to opted-out pairs with error 21610
     # JSON: {"keywords": {"stop": [...], "start": [...], "help": [...]},
@@ -86,36 +86,36 @@ class Settings(SQLModel, table=True):
     optout_config: str = Field(default_factory=lambda: json.dumps(DEFAULT_OPTOUT_CONFIG))
     # JSON dict of geo params merged into inbound webhooks (FromCity, FromCountry, ...)
     webhook_geo_params: str = "{}"
-    # Verify v2 (phase 6): how long a verification code stays valid.
+    # Verify v2: how long a verification code stays valid.
     verify_ttl_seconds: int = 600
-    # Lookup v2 (phase 7): JSON dict {E164: line type} overriding the default
+    # Lookup v2: JSON dict {E164: line type} overriding the default
     # "mobile" for line_type_intelligence (e.g. {"+15551234567": "nonFixedVoip"}).
     lookup_line_types: str = "{}"
-    # Strict mode (phase 8) — everything defaults to permissive.
+    # Strict mode — everything defaults to permissive.
     strict_auth: bool = False  # Basic creds must match account_sid/auth_token (20003)
-    # API key pair also accepted by strict_auth when set (phase 9).
+    # API key pair also accepted by strict_auth when set.
     api_key_sid: str = ""
     api_key_secret: str = ""
     strict_validation: bool = False  # E.164 To/From checks (21211/21212), landline 21614
     trial_mode: bool = False  # sends allowed only to verified_numbers (21608)
     verified_numbers: str = "[]"  # JSON list of E.164 numbers, used by trial_mode
     rate_limit_per_minute: int = 0  # 0 = off; otherwise 429/20429 past the limit
-    # Phase 10: dashboard & workflow.
+    # Dashboard & workflow.
     # JSON list of {"tag": str, "to_suffix"?: str, "from_suffix"?: str, "body_regex"?: str}
     auto_tag_rules: str = "[]"
     retention_max_age_hours: int = 0  # 0 = keep forever
     retention_max_messages: int = 0  # 0 = unlimited
-    # Phase 11: webhook chaos — test app-side resilience.
+    # Webhook chaos — test app-side resilience.
     webhook_latency_ms: int = 0  # artificial delay before every delivery
     webhook_failure_rate: float = 0.0  # 0..1 chance a delivery is dropped (logged as error)
     webhook_retry_count: int = 0  # retries after a failed delivery (error or 5xx)
-    # Phase 12: release/forwarding through REAL Twilio (Mailpit's relay analog).
+    # Release/forwarding through REAL Twilio (Mailpit's relay analog).
     real_account_sid: str = ""
     real_auth_token: str = ""
     real_from_number: str = ""  # the real Twilio number releases are sent from
     release_allowlist: str = "[]"  # JSON list of E.164 numbers releases may target
     auto_forward_to: str = ""  # forward every captured outbound message here (must be allowlisted)
-    # Phase 12: JSON POST for every captured message (Mailpit's message webhook).
+    # Capture webhook: JSON POST for every captured message (Mailpit's message webhook).
     capture_webhook_url: str = ""
 
 

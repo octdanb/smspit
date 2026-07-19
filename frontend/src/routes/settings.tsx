@@ -77,8 +77,8 @@ function SettingsPage() {
         <CardHeader>
           <CardTitle>Webhooks</CardTitle>
           <CardDescription>
-            Where simulated inbound messages are delivered (phase 5). Webhooks
-            are signed with the auth token below.
+            Where simulated inbound messages are delivered. Webhooks are signed
+            with the auth token below.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">

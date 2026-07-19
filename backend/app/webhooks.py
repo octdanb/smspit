@@ -1,4 +1,4 @@
-"""Outbound webhook delivery (status callbacks now, inbound messages in phase 5).
+"""Outbound webhook delivery (status callbacks and inbound messages).
 
 Every attempt is signed with X-Twilio-Signature and recorded in the
 WebhookDelivery log, success or failure.
@@ -216,7 +216,7 @@ def build_inbound_params(
     geo_params: dict[str, str],
     optout_type: str | None,
 ) -> dict[str, str]:
-    """Twilio inbound-message webhook params (SPEC §2.1)."""
+    """Twilio inbound-message webhook params."""
     params = {
         "MessageSid": message.sid,
         "SmsSid": message.sid,
