@@ -7,14 +7,15 @@ from email.utils import format_datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, col, select
 
-from . import lifecycle
+from . import lifecycle, media, optout
 from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
-from .models import Message, utcnow
+from .models import MediaItem, Message, utcnow
 from .segments import segment_count
 from .ws import manager
 
@@ -123,6 +124,10 @@ async def create_message(
     if len(body) > 1600:
         raise TwilioError(21617, "The concatenated message body exceeds the 1600 character limit.")
 
+    settings = get_settings(session)
+    if settings.enforce_optouts and optout.is_opted_out(session, to, from_):
+        raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
+
     smart_encoded = parse_bool(single.get("SmartEncoded"))
     encoding, num_segments = segment_count(body, smart_encoded=smart_encoded)
 
@@ -165,12 +170,13 @@ async def create_message(
     session.add(message)
     session.commit()
     session.refresh(message)
+    media.create_media_items(session, message.sid, account_sid, media_urls)
 
     await manager.broadcast(
         "message.created",
-        {"number": counterparty(message), "message": message_to_internal(message)},
+        {"number": counterparty(message), "message": message_to_internal(session, message)},
     )
-    if get_settings(session).simulate_delivery:
+    if settings.simulate_delivery:
         lifecycle.start(message.sid)
     return message_to_json(message)
 
@@ -300,7 +306,7 @@ async def update_message(
 
     await manager.broadcast(
         "message.status_changed",
-        {"number": counterparty(message), "message": message_to_internal(message)},
+        {"number": counterparty(message), "message": message_to_internal(session, message)},
     )
     return message_to_json(message)
 
@@ -320,6 +326,97 @@ async def delete_message(
             20009, "Cannot delete this resource before it is complete", http_status=409
         )
     number = counterparty(message)
+    for item in media.media_for_message(session, sid):
+        session.delete(item)
     session.delete(message)
     session.commit()
     await manager.broadcast("messages.cleared", {"number": number})
+
+
+def media_to_json(item: MediaItem) -> dict:
+    base = f"/2010-04-01/Accounts/{item.account_sid}/Messages/{item.message_sid}/Media/{item.sid}"
+    return {
+        "sid": item.sid,
+        "account_sid": item.account_sid,
+        "parent_sid": item.message_sid,
+        "content_type": item.content_type,
+        "date_created": rfc2822(item.date_created),
+        "date_updated": rfc2822(item.date_updated),
+        "uri": f"{base}.json",
+    }
+
+
+@router.get("/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media.json")
+def list_media(
+    account_sid: str,
+    message_sid: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> dict:
+    items = media.media_for_message(session, message_sid)
+    path = f"/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media.json"
+    return {
+        "media_list": [media_to_json(item) for item in items],
+        "page": 0,
+        "page_size": max(len(items), 50),
+        "first_page_uri": f"{path}?PageSize=50&Page=0",
+        "previous_page_uri": None,
+        "next_page_uri": None,
+        "uri": str(request.url.path),
+        "start": 0,
+        "end": max(len(items) - 1, 0),
+    }
+
+
+def _get_media_item(session: Session, account_sid: str, media_sid: str) -> MediaItem:
+    item = session.get(MediaItem, media_sid)
+    if item is None:
+        raise not_found(f"2010-04-01/Accounts/{account_sid}/Media/{media_sid}")
+    return item
+
+
+@router.get("/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media/{media_sid}.json")
+def fetch_media(
+    account_sid: str,
+    message_sid: str,
+    media_sid: str,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> dict:
+    return media_to_json(_get_media_item(session, account_sid, media_sid))
+
+
+@router.get("/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media/{media_sid}")
+def fetch_media_content(
+    account_sid: str,
+    message_sid: str,
+    media_sid: str,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> RedirectResponse:
+    """Twilio redirects the extensionless media URL to the stored bytes."""
+    _get_media_item(session, account_sid, media_sid)
+    base = get_settings(session).public_base_url.rstrip("/")
+    return RedirectResponse(f"{base}/api/media/{media_sid}", status_code=302)
+
+
+@router.delete(
+    "/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media/{media_sid}.json",
+    status_code=204,
+)
+def delete_media(
+    account_sid: str,
+    message_sid: str,
+    media_sid: str,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> None:
+    item = _get_media_item(session, account_sid, media_sid)
+    message = session.exec(select(Message).where(Message.sid == item.message_sid)).first()
+    session.delete(item)
+    if message is not None:
+        message.num_media = max(message.num_media - 1, 0)
+        message.date_updated = utcnow()
+        session.add(message)
+    session.commit()

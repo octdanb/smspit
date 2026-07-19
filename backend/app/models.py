@@ -1,5 +1,7 @@
+import json
 from datetime import UTC, datetime
 
+from sqlalchemy import Column, LargeBinary
 from sqlmodel import Field, SQLModel
 
 
@@ -7,6 +9,26 @@ def utcnow() -> datetime:
     # Naive UTC: SQLite has no timezone type, and mixing aware/naive datetimes
     # breaks comparisons. Serializers re-attach UTC on the way out.
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+DEFAULT_OPTOUT_CONFIG = {
+    "keywords": {
+        "stop": ["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"],
+        "start": ["START", "YES", "UNSTOP"],
+        "help": ["HELP", "INFO"],
+    },
+    "confirmations": {
+        "stop": (
+            "You have successfully been unsubscribed. You will not receive any more "
+            "messages from this number. Reply START to resubscribe."
+        ),
+        "start": (
+            "You have successfully been re-subscribed to messages from this number. "
+            "Reply HELP for help. Reply STOP to unsubscribe."
+        ),
+        "help": "Reply STOP to unsubscribe. Msg&Data Rates May Apply.",
+    },
+}
 
 
 class Message(SQLModel, table=True):
@@ -56,6 +78,38 @@ class Settings(SQLModel, table=True):
     failure_rate: float = 0.0  # 0..1 chance an otherwise-fine message goes undelivered
     # JSON list of {"to_suffix": str, "status": "undelivered"|"failed", "error_code": int}
     forced_rules: str = "[]"
+    # Two-way messaging (phase 5).
+    public_base_url: str = "http://localhost:8025"  # used for media URLs in webhooks
+    enforce_optouts: bool = False  # reject sends to opted-out pairs with error 21610
+    # JSON: {"keywords": {"stop": [...], "start": [...], "help": [...]},
+    #        "confirmations": {"stop": str, "start": str, "help": str}}
+    optout_config: str = Field(default_factory=lambda: json.dumps(DEFAULT_OPTOUT_CONFIG))
+    # JSON dict of geo params merged into inbound webhooks (FromCity, FromCountry, ...)
+    webhook_geo_params: str = "{}"
+
+
+class MediaItem(SQLModel, table=True):
+    """An MMS attachment (Twilio Media resource). Bytes are fetched lazily."""
+
+    sid: str = Field(primary_key=True)  # ME + 32 hex
+    message_sid: str = Field(index=True)
+    account_sid: str
+    content_type: str = "application/octet-stream"
+    source_url: str | None = None  # where the MediaUrl pointed
+    content: bytes | None = Field(default=None, sa_column=Column(LargeBinary))
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
+
+
+class OptOut(SQLModel, table=True):
+    """(recipient, sender) opt-out pair. sender '*' applies to all senders."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    recipient: str = Field(index=True)  # the number that texted STOP
+    sender: str  # the app number it opted out from ('*' = all)
+    opted_out: bool = True
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
 
 
 class WebhookDelivery(SQLModel, table=True):

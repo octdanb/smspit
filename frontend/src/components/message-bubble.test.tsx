@@ -18,6 +18,7 @@ function makeMessage(overrides: Partial<ThreadMessage> = {}): ThreadMessage {
     num_media: 0,
     encoding: "gsm7",
     channel: "sms",
+    media: [],
     date_created: "2026-07-19T09:00:00Z",
     date_sent: null,
     date_updated: "2026-07-19T09:00:00Z",

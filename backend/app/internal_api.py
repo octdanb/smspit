@@ -3,13 +3,13 @@
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlmodel import Session, col, delete, func, or_, select
 
-from . import webhooks
+from . import inbound, media, optout, webhooks
 from .db import get_session, get_settings
-from .models import Message, WebhookDelivery
+from .models import MediaItem, Message, OptOut, WebhookDelivery
 from .ws import manager
 
 router = APIRouter(prefix="/api")
@@ -21,7 +21,8 @@ def iso(dt: datetime | None) -> str | None:
     return dt.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
 
 
-def message_to_internal(message: Message) -> dict:
+def message_to_internal(session: Session, message: Message) -> dict:
+    media_items = media.media_for_message(session, message.sid) if message.num_media > 0 else []
     return {
         "sid": message.sid,
         "direction": message.direction,
@@ -35,6 +36,10 @@ def message_to_internal(message: Message) -> dict:
         "num_media": message.num_media,
         "encoding": message.encoding,
         "channel": message.channel,
+        "media": [
+            {"sid": item.sid, "content_type": item.content_type, "url": f"/api/media/{item.sid}"}
+            for item in media_items
+        ],
         "date_created": iso(message.date_created),
         "date_sent": iso(message.date_sent),
         "date_updated": iso(message.date_updated),
@@ -53,10 +58,18 @@ def list_numbers(session: Session = Depends(get_session)) -> list[dict]:
         select(Message).order_by(col(Message.date_created).asc(), col(Message.id).asc())
     ).all()
 
+    opted_out_numbers = {
+        pair.recipient
+        for pair in session.exec(select(OptOut).where(OptOut.opted_out == True)).all()  # noqa: E712
+    }
+
     threads: dict[str, dict] = {}
     for message in messages:
         number = counterparty(message)
-        thread = threads.setdefault(number, {"number": number, "message_count": 0})
+        thread = threads.setdefault(
+            number,
+            {"number": number, "message_count": 0, "opted_out": number in opted_out_numbers},
+        )
         thread["message_count"] += 1
         thread["last_message"] = {
             "sid": message.sid,
@@ -93,10 +106,75 @@ def thread_messages(
 
     return {
         "number": number,
-        "messages": [message_to_internal(m) for m in reversed(messages)],
+        "messages": [message_to_internal(session, m) for m in reversed(messages)],
+        "opted_out": optout.has_any_optout(session, number),
         "total": total,
         "page": page,
         "page_size": page_size,
+    }
+
+
+class ReplyPayload(BaseModel):
+    body: str
+    to: str | None = None
+    media_urls: list[str] = []
+    geo: dict[str, str] | None = None
+
+
+@router.post("/numbers/{number}/reply")
+async def reply(
+    number: str, payload: ReplyPayload, session: Session = Depends(get_session)
+) -> dict:
+    """Simulate an inbound SMS from this number (fires the inbound webhook)."""
+    message = await inbound.handle_reply(
+        session,
+        number,
+        body=payload.body,
+        to=payload.to,
+        media_urls=payload.media_urls,
+        geo=payload.geo,
+    )
+    return message_to_internal(session, message)
+
+
+@router.get("/media/{media_sid}")
+async def media_content(media_sid: str, session: Session = Depends(get_session)) -> Response:
+    """Serve MMS bytes (fetched lazily from the original MediaUrl)."""
+    item = session.get(MediaItem, media_sid)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Media not found")
+    content, content_type = await media.fetch_content(session, item)
+    return Response(content=content, media_type=content_type)
+
+
+class OptOutUpdate(BaseModel):
+    recipient: str
+    sender: str = "*"
+    opted_out: bool
+
+
+@router.get("/optouts")
+def list_optouts(session: Session = Depends(get_session)) -> list[dict]:
+    pairs = session.exec(select(OptOut).order_by(col(OptOut.id).desc())).all()
+    return [
+        {
+            "recipient": pair.recipient,
+            "sender": pair.sender,
+            "opted_out": pair.opted_out,
+            "date_updated": iso(pair.date_updated),
+        }
+        for pair in pairs
+    ]
+
+
+@router.put("/optouts")
+async def update_optout(payload: OptOutUpdate, session: Session = Depends(get_session)) -> dict:
+    pair = optout.set_opted_out(session, payload.recipient, payload.sender, payload.opted_out)
+    await manager.broadcast("optout.changed", {"number": payload.recipient})
+    return {
+        "recipient": pair.recipient,
+        "sender": pair.sender,
+        "opted_out": pair.opted_out,
     }
 
 
@@ -110,6 +188,10 @@ def settings_to_json(settings) -> dict:
         "status_delay_ms": settings.status_delay_ms,
         "failure_rate": settings.failure_rate,
         "forced_rules": json.loads(settings.forced_rules or "[]"),
+        "public_base_url": settings.public_base_url,
+        "enforce_optouts": settings.enforce_optouts,
+        "optout_config": json.loads(settings.optout_config or "{}"),
+        "webhook_geo_params": json.loads(settings.webhook_geo_params or "{}"),
     }
 
 
@@ -128,6 +210,10 @@ class SettingsUpdate(BaseModel):
     status_delay_ms: int | None = None
     failure_rate: float | None = None
     forced_rules: list[ForcedRule] | None = None
+    public_base_url: str | None = None
+    enforce_optouts: bool | None = None
+    optout_config: dict | None = None
+    webhook_geo_params: dict[str, str] | None = None
 
 
 @router.get("/settings")
@@ -140,8 +226,8 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
     settings = get_settings(session)
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
-        if key == "forced_rules":
-            settings.forced_rules = json.dumps(value)
+        if key in ("forced_rules", "optout_config", "webhook_geo_params"):
+            setattr(settings, key, json.dumps(value))
         else:
             setattr(settings, key, value)
     session.add(settings)

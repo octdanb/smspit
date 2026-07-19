@@ -136,7 +136,10 @@ async def _apply_transition(
 
         from .internal_api import counterparty, message_to_internal
 
-        payload = {"number": counterparty(message), "message": message_to_internal(message)}
+        payload = {
+            "number": counterparty(message),
+            "message": message_to_internal(session, message),
+        }
         callback_message = message
 
     await manager.broadcast("message.status_changed", payload)

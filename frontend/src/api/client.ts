@@ -14,7 +14,14 @@ export interface LastMessage {
 export interface NumberSummary {
   number: string;
   message_count: number;
+  opted_out: boolean;
   last_message: LastMessage;
+}
+
+export interface MediaAttachment {
+  sid: string;
+  content_type: string;
+  url: string;
 }
 
 export interface ThreadMessage {
@@ -30,6 +37,7 @@ export interface ThreadMessage {
   num_media: number;
   encoding: string;
   channel: string;
+  media: MediaAttachment[];
   date_created: string;
   date_sent: string | null;
   date_updated: string;
@@ -38,6 +46,7 @@ export interface ThreadMessage {
 export interface Thread {
   number: string;
   messages: ThreadMessage[];
+  opted_out: boolean;
   total: number;
   page: number;
   page_size: number;
@@ -138,5 +147,33 @@ export function fetchWebhookLog(page = 0): Promise<WebhookLog> {
 export function retryWebhook(id: number): Promise<WebhookDelivery> {
   return request<WebhookDelivery>(`/api/webhook-log/${id}/retry`, {
     method: "POST",
+  });
+}
+
+export interface ReplyPayload {
+  body: string;
+  to?: string;
+  media_urls?: string[];
+}
+
+export function sendReply(
+  number: string,
+  payload: ReplyPayload,
+): Promise<ThreadMessage> {
+  return request<ThreadMessage>(
+    `/api/numbers/${encodeURIComponent(number)}/reply`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function setOptOut(recipient: string, optedOut: boolean): Promise<void> {
+  return request<void>("/api/optouts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient, opted_out: optedOut }),
   });
 }

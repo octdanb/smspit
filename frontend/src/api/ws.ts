@@ -31,6 +31,12 @@ export function handleWsEvent(queryClient: QueryClient, event: WsEvent): void {
     case "webhook.delivered":
       queryClient.invalidateQueries({ queryKey: ["webhook-log"] });
       break;
+    case "optout.changed":
+      queryClient.invalidateQueries({ queryKey: ["numbers"] });
+      if (number) {
+        queryClient.invalidateQueries({ queryKey: ["thread", number] });
+      }
+      break;
   }
 }
 

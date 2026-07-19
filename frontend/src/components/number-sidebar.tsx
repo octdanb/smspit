@@ -50,7 +50,14 @@ export function NumberSidebar() {
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate font-medium">{entry.number}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-medium">{entry.number}</span>
+                {entry.opted_out && (
+                  <Badge variant="destructive" className="shrink-0">
+                    stop
+                  </Badge>
+                )}
+              </span>
               <Badge variant="secondary">{entry.message_count}</Badge>
             </div>
             <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">

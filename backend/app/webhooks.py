@@ -99,3 +99,33 @@ async def deliver_status_callback(message: Message, status: str) -> WebhookDeliv
         return None
     params = build_status_callback_params(message, status)
     return await deliver("status_callback", message.status_callback_url, params, message.sid)
+
+
+def build_inbound_params(
+    message: Message,
+    media: list,
+    public_base_url: str,
+    geo_params: dict[str, str],
+    optout_type: str | None,
+) -> dict[str, str]:
+    """Twilio inbound-message webhook params (SPEC §2.1)."""
+    params = {
+        "MessageSid": message.sid,
+        "SmsSid": message.sid,
+        "SmsMessageSid": message.sid,
+        "AccountSid": message.account_sid,
+        "From": message.from_number,
+        "To": message.to_number,
+        "Body": message.body,
+        "NumMedia": str(message.num_media),
+        "NumSegments": str(message.num_segments),
+        "SmsStatus": "received",
+        "ApiVersion": API_VERSION,
+    }
+    for index, item in enumerate(media):
+        params[f"MediaUrl{index}"] = f"{public_base_url.rstrip('/')}/api/media/{item.sid}"
+        params[f"MediaContentType{index}"] = item.content_type
+    if optout_type is not None:
+        params["OptOutType"] = optout_type
+    params.update(geo_params)
+    return params

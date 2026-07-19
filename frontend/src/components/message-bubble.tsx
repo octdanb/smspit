@@ -22,7 +22,31 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
             : "rounded-bl-sm bg-muted text-foreground",
         )}
       >
-        {message.body || <em>(no body)</em>}
+        {message.media.length > 0 && (
+          <div className="mb-1 flex flex-wrap gap-2">
+            {message.media.map((item) =>
+              item.content_type.startsWith("image/") ? (
+                <img
+                  key={item.sid}
+                  src={item.url}
+                  alt={item.content_type}
+                  className="max-h-48 rounded-lg"
+                />
+              ) : (
+                <a
+                  key={item.sid}
+                  href={item.url}
+                  className="text-xs underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {item.content_type}
+                </a>
+              ),
+            )}
+          </div>
+        )}
+        {message.body || (message.media.length === 0 && <em>(no body)</em>)}
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>{messageTime(message.date_created)}</span>
