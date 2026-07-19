@@ -206,12 +206,11 @@ jobs:
           docker rm -f smspit
 
       - name: Scan image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: smspit:ci
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: 1
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/trivy" image \
+            --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress smspit:ci
 
       # Publish multi-arch with an SBOM and max provenance attestation. Reuses
       # the amd64 layers from the test build, so only arm64 is new.
