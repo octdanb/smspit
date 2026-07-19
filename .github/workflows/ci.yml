@@ -69,6 +69,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
+          # The API server runs backgrounded for the whole job; skip the post-run
+          # cache prune, which otherwise blocks on the live uv process.
+          prune-cache: false
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -79,7 +82,9 @@ jobs:
         run: |
           cd backend
           uv sync --frozen
-          nohup uv run uvicorn app.main:app --port 8025 &
+          # Run the venv binary directly, not `uv run`, so no uv supervisor
+          # process lingers holding a lock on the shared cache directory.
+          nohup .venv/bin/uvicorn app.main:app --port 8025 &
           for i in $(seq 1 30); do
             curl -sf localhost:8025/api/health && exit 0
             sleep 1
@@ -103,6 +108,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
+          # The API server runs backgrounded for the whole job; skip the post-run
+          # cache prune, which otherwise blocks on the live uv process.
+          prune-cache: false
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -120,7 +128,9 @@ jobs:
         run: |
           cd backend
           uv sync --frozen
-          nohup env SMSPIT_STATIC_DIR=../frontend/dist uv run uvicorn app.main:app --port 8025 &
+          # Run the venv binary directly, not `uv run`, so no uv supervisor
+          # process lingers holding a lock on the shared cache directory.
+          nohup env SMSPIT_STATIC_DIR=../frontend/dist .venv/bin/uvicorn app.main:app --port 8025 &
           for i in $(seq 1 30); do
             curl -sf localhost:8025/api/health && exit 0
             sleep 1
