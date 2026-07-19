@@ -1,7 +1,9 @@
 # Stage 1: build the React dashboard with pnpm (pinned via packageManager)
-FROM node:22-alpine AS frontend
+FROM node:26-alpine AS frontend
 ENV CI=true
-RUN corepack enable
+# Node 25+ no longer bundles corepack; install it, then let it pick up the
+# pnpm version pinned in package.json's packageManager field.
+RUN npm install -g corepack@latest && corepack enable
 WORKDIR /build
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
