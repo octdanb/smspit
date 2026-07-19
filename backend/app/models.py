@@ -4,29 +4,46 @@ from sqlmodel import Field, SQLModel
 
 
 def utcnow() -> datetime:
-    return datetime.now(UTC)
+    # Naive UTC: SQLite has no timezone type, and mixing aware/naive datetimes
+    # breaks comparisons. Serializers re-attach UTC on the way out.
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Message(SQLModel, table=True):
-    """A captured SMS/MMS message (Twilio Message resource). Initial cut — grows in phase 2."""
+    """A captured SMS/MMS message (Twilio Message resource)."""
 
-    sid: str = Field(primary_key=True)
+    # Autoincrement PK gives a deterministic insertion-order tiebreaker for
+    # equal timestamps; sid stays the external (Twilio) identifier.
+    id: int | None = Field(default=None, primary_key=True)
+    sid: str = Field(unique=True, index=True)
     account_sid: str
     direction: str  # inbound | outbound-api | outbound-call | outbound-reply
-    from_number: str
-    to_number: str
+    from_number: str = Field(index=True)
+    to_number: str = Field(index=True)
     body: str = ""
     status: str = "queued"
+    error_code: int | None = None
+    error_message: str | None = None
     num_segments: int = 1
     num_media: int = 0
-    date_created: datetime = Field(default_factory=utcnow)
+    encoding: str = "gsm7"  # gsm7 | ucs2
+    channel: str = "sms"  # sms | mms | whatsapp
+    messaging_service_sid: str | None = None
+    schedule_type: str | None = None
+    send_at: datetime | None = None
+    validity_period: int = 36000
+    status_callback_url: str | None = None
+    price: str | None = None
+    provide_feedback: bool = False
+    feedback_outcome: str | None = None
+    date_created: datetime = Field(default_factory=utcnow, index=True)
     date_sent: datetime | None = None
     date_updated: datetime = Field(default_factory=utcnow)
     raw_params: str = "{}"  # JSON of the original request params
 
 
 class Settings(SQLModel, table=True):
-    """Singleton settings row. Initial cut — grows with simulation/strictness options."""
+    """Singleton settings row. Grows with simulation/strictness options."""
 
     id: int = Field(default=1, primary_key=True)
     inbound_webhook_url: str | None = None
