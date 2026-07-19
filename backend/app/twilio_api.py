@@ -131,6 +131,17 @@ def _number_status_callback(session: Session, from_: str) -> str | None:
     return number.status_callback if number is not None else None
 
 
+def parse_int_param(value: str | None, name: str, default: int) -> int:
+    """Parse a numeric query/form param, raising a Twilio 400 (not a bare 500)
+    when it isn't an integer."""
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise TwilioError(20001, f"Invalid {name} value: {value}") from exc
+
+
 def parse_filter_dt(value: str) -> datetime:
     """Parse a DateSent filter (YYYY-MM-DD or ISO 8601) to naive UTC."""
     try:
@@ -232,8 +243,16 @@ async def create_message(
         ).one()
         if recent >= settings.rate_limit_per_minute:
             raise TwilioError(20429, "Too Many Requests", http_status=429)
-    if from_ and settings.enforce_optouts and optout.is_opted_out(session, to, from_):
-        raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
+    if settings.enforce_optouts:
+        # A Messaging Service send has no From yet (the pool picks one later), so
+        # fall back to "opted out from any sender" — Twilio still returns 21610.
+        opted = (
+            optout.is_opted_out(session, to, from_)
+            if from_
+            else optout.has_any_optout(session, to)
+        )
+        if opted:
+            raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
 
     smart_encoded = parse_bool(single.get("SmartEncoded")) or (
         service is not None and service.smart_encoding and "SmartEncoded" not in single
@@ -270,9 +289,10 @@ async def create_message(
         encoding=encoding,
         channel=channel,
         messaging_service_sid=messaging_service_sid,
-        validity_period=int(
-            single.get("ValidityPeriod")
-            or (service.validity_period if service is not None else 36000)
+        validity_period=parse_int_param(
+            single.get("ValidityPeriod"),
+            "ValidityPeriod",
+            service.validity_period if service is not None else 36000,
         ),
         status_callback_url=single.get("StatusCallback")
         or (service.status_callback if service is not None else None)
@@ -310,8 +330,8 @@ def list_messages(
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
     query = request.query_params
-    page_size = min(int(query.get("PageSize") or 50), 1000)
-    page = int(query.get("Page") or 0)
+    page_size = min(parse_int_param(query.get("PageSize"), "PageSize", 50), 1000)
+    page = parse_int_param(query.get("Page"), "Page", 0)
     page_token = query.get("PageToken")
 
     stmt = select(Message).order_by(col(Message.date_created).desc(), col(Message.id).desc())
@@ -319,15 +339,16 @@ def list_messages(
         stmt = stmt.where(Message.to_number == query["To"])
     if query.get("From"):
         stmt = stmt.where(Message.from_number == query["From"])
+    # DateSent filters constrain the sent date (NULL for queued/scheduled), like Twilio.
     if query.get("DateSent"):
         day = parse_filter_dt(query["DateSent"])
-        stmt = stmt.where(col(Message.date_created) >= day)
+        stmt = stmt.where(col(Message.date_sent) >= day)
         if len(query["DateSent"]) == 10:  # date-only: match the whole day
-            stmt = stmt.where(col(Message.date_created) < day + timedelta(days=1))
+            stmt = stmt.where(col(Message.date_sent) < day + timedelta(days=1))
     if query.get("DateSent<"):
-        stmt = stmt.where(col(Message.date_created) <= parse_filter_dt(query["DateSent<"]))
+        stmt = stmt.where(col(Message.date_sent) <= parse_filter_dt(query["DateSent<"]))
     if query.get("DateSent>"):
-        stmt = stmt.where(col(Message.date_created) >= parse_filter_dt(query["DateSent>"]))
+        stmt = stmt.where(col(Message.date_sent) >= parse_filter_dt(query["DateSent>"]))
 
     if page_token:
         # Relative paging: token is the last sid of the previous page.

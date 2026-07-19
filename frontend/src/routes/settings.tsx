@@ -108,6 +108,12 @@ function SettingsPage() {
             <label className="grid gap-1.5 text-sm">
               Auth token (signs webhooks)
               <Input
+                type="password"
+                placeholder={
+                  settings.data.auth_token_set
+                    ? "•••••• (set — leave blank to keep)"
+                    : "not set"
+                }
                 value={draft.auth_token ?? ""}
                 onChange={(e) =>
                   setDraft({ ...draft, auth_token: e.target.value })
@@ -293,6 +299,11 @@ function SettingsPage() {
               Real auth token
               <Input
                 type="password"
+                placeholder={
+                  settings.data.real_auth_token_set
+                    ? "•••••• (set — leave blank to keep)"
+                    : "not set"
+                }
                 value={draft.real_auth_token ?? ""}
                 onChange={(e) =>
                   setDraft({ ...draft, real_auth_token: e.target.value })

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, copyText } from "@/lib/utils";
 
 export function CopyChip({
   value,
@@ -18,11 +18,11 @@ export function CopyChip({
     <button
       type="button"
       title="Copy to clipboard"
-      onClick={() => {
-        navigator.clipboard.writeText(value).then(() => {
+      onClick={async () => {
+        if (await copyText(value)) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
-        });
+        }
       }}
       className={cn(
         "inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 font-mono text-xs hover:bg-accent",
