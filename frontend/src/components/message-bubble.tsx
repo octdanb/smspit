@@ -5,16 +5,24 @@ import { messageTime } from "@/lib/format";
 import { extractCode } from "@/lib/otp";
 import { cn } from "@/lib/utils";
 
-export function MessageBubble({ message }: { message: ThreadMessage }) {
+export function MessageBubble({
+  message,
+  onSelect,
+}: {
+  message: ThreadMessage;
+  onSelect?: (sid: string) => void;
+}) {
   const outbound = message.direction.startsWith("outbound");
   const code = outbound ? extractCode(message.body) : null;
 
   return (
     <div
       data-testid="message-bubble"
+      onClick={() => onSelect?.(message.sid)}
       className={cn(
         "flex flex-col gap-1",
         outbound ? "items-end" : "items-start",
+        onSelect && "cursor-pointer",
       )}
     >
       <div
@@ -67,6 +75,14 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
         {message.error_code !== null && (
           <Badge variant="destructive">error {message.error_code}</Badge>
         )}
+        {message.tags.map((tag) => (
+          <span
+            key={tag}
+            className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+          >
+            {tag}
+          </span>
+        ))}
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import {
   clearAllMessages,
+  exportUrl,
   fetchSettings,
   updateSettings,
   type SettingsData,
@@ -26,16 +27,34 @@ function SettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: fetchSettings });
   const [draft, setDraft] = useState<Partial<SettingsData>>({});
+  const [rulesDraft, setRulesDraft] = useState("[]");
+  const [rulesError, setRulesError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (settings.data) setDraft(settings.data);
+    if (settings.data) {
+      setDraft(settings.data);
+      setRulesDraft(JSON.stringify(settings.data.auto_tag_rules, null, 2));
+    }
   }, [settings.data]);
 
   const save = useMutation({
-    mutationFn: () => updateSettings(draft),
+    mutationFn: () => {
+      let rules: SettingsData["auto_tag_rules"] | undefined;
+      try {
+        rules = JSON.parse(rulesDraft);
+        setRulesError(null);
+      } catch {
+        setRulesError("Auto-tag rules must be valid JSON — not saved.");
+        rules = undefined;
+      }
+      return updateSettings(
+        rules === undefined ? draft : { ...draft, auto_tag_rules: rules },
+      );
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(["settings"], data);
       setDraft(data);
+      setRulesDraft(JSON.stringify(data.auto_tag_rules, null, 2));
     },
   });
 
@@ -244,6 +263,75 @@ function SettingsPage() {
                 }
               />
             </label>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tags & housekeeping</CardTitle>
+          <CardDescription>
+            Auto-tag rules label new messages for manual testing (Mailpit
+            style); retention purges old messages automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <label className="grid gap-1.5 text-sm">
+            Auto-tag rules (JSON:{" "}
+            <code className="inline rounded bg-muted px-1 text-xs">
+              {'[{"tag": "otp", "body_regex": "code is \\\\d+"}]'}
+            </code>
+            — also matches to_suffix / from_suffix)
+            <textarea
+              className="min-h-24 rounded-md border border-input bg-transparent p-2 font-mono text-xs"
+              value={rulesDraft}
+              onChange={(event) => setRulesDraft(event.target.value)}
+            />
+            {rulesError && (
+              <span className="text-xs text-destructive">{rulesError}</span>
+            )}
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="grid gap-1.5 text-sm">
+              Delete messages older than (hours, 0 = keep forever)
+              <Input
+                type="number"
+                min={0}
+                value={draft.retention_max_age_hours ?? 0}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    retention_max_age_hours: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              Keep at most (messages, 0 = unlimited)
+              <Input
+                type="number"
+                min={0}
+                value={draft.retention_max_messages ?? 0}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    retention_max_messages: Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+          <div className="flex gap-2 text-sm">
+            <Button variant="outline" size="sm" asChild>
+              <a href={exportUrl("json")} download>
+                Export all (JSON)
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href={exportUrl("csv")} download>
+                Export all (CSV)
+              </a>
+            </Button>
           </div>
         </CardContent>
       </Card>

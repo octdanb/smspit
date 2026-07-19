@@ -41,6 +41,11 @@ manager = ConnectionManager()
 
 @router.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
+    from .config import config
+
+    if config.dashboard_token and websocket.query_params.get("token") != config.dashboard_token:
+        await websocket.close(code=4401)
+        return
     await manager.connect(websocket)
     try:
         while True:

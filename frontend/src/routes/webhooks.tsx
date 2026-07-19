@@ -10,6 +10,7 @@ import {
 } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { messageTime } from "@/lib/format";
 
 export const Route = createFileRoute("/webhooks")({
@@ -89,19 +90,57 @@ function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
 }
 
 function WebhooksPage() {
+  const [kind, setKind] = useState("");
+  const [result, setResult] = useState("");
+  const [messageSid, setMessageSid] = useState("");
   const log = useQuery({
-    queryKey: ["webhook-log"],
-    queryFn: () => fetchWebhookLog(),
+    queryKey: ["webhook-log", kind, result, messageSid],
+    queryFn: () =>
+      fetchWebhookLog({ kind, result, message_sid: messageSid.trim() }),
+    placeholderData: (previous) => previous,
   });
+
+  const selectClass =
+    "h-8 rounded-md border border-input bg-transparent px-2 text-xs";
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b px-4 py-3">
-        <h2 className="font-semibold">Webhook deliveries</h2>
-        <p className="text-xs text-muted-foreground">
-          Status callbacks and inbound webhooks sent to your app, signed with
-          X-Twilio-Signature.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b px-4 py-3">
+        <div>
+          <h2 className="font-semibold">Webhook deliveries</h2>
+          <p className="text-xs text-muted-foreground">
+            Status callbacks and inbound webhooks sent to your app, signed with
+            X-Twilio-Signature.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Filter by kind"
+            className={selectClass}
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+          >
+            <option value="">all kinds</option>
+            <option value="status_callback">status callbacks</option>
+            <option value="inbound">inbound</option>
+          </select>
+          <select
+            aria-label="Filter by result"
+            className={selectClass}
+            value={result}
+            onChange={(event) => setResult(event.target.value)}
+          >
+            <option value="">any result</option>
+            <option value="success">success</option>
+            <option value="error">errors</option>
+          </select>
+          <Input
+            className="h-8 w-64 text-xs"
+            placeholder="Filter by message SID…"
+            value={messageSid}
+            onChange={(event) => setMessageSid(event.target.value)}
+          />
+        </div>
       </header>
       <div className="flex-1 overflow-y-auto">
         {log.isSuccess && log.data.deliveries.length === 0 && (

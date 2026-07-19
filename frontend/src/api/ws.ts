@@ -44,6 +44,14 @@ export function handleWsEvent(queryClient: QueryClient, event: WsEvent): void {
         queryClient.invalidateQueries({ queryKey: ["thread", number] });
       }
       break;
+    case "tags.changed":
+      queryClient.invalidateQueries({ queryKey: ["numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["tags"] });
+      if (number) {
+        queryClient.invalidateQueries({ queryKey: ["thread", number] });
+        queryClient.invalidateQueries({ queryKey: ["message-detail"] });
+      }
+      break;
   }
 }
 
@@ -64,7 +72,9 @@ export function useLiveUpdates(): LiveStatus {
 
     const connect = () => {
       const protocol = location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${protocol}://${location.host}/api/ws`);
+      const token = localStorage.getItem("smspit-token");
+      const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
+      socket = new WebSocket(`${protocol}://${location.host}/api/ws${suffix}`);
       socket.onopen = () => {
         setStatus("live");
         retryDelay = 1000;

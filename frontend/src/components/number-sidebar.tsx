@@ -52,14 +52,28 @@ export function NumberSidebar() {
           >
             <div className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate font-medium">{entry.number}</span>
+                <span
+                  className={cn(
+                    "truncate font-medium",
+                    entry.unread_count > 0 && "font-bold",
+                  )}
+                >
+                  {entry.number}
+                </span>
                 {entry.opted_out && (
                   <Badge variant="destructive" className="shrink-0">
                     stop
                   </Badge>
                 )}
               </span>
-              <Badge variant="secondary">{entry.message_count}</Badge>
+              <span className="flex shrink-0 items-center gap-1">
+                {entry.unread_count > 0 && (
+                  <Badge className="bg-sky-600 text-white">
+                    {entry.unread_count}
+                  </Badge>
+                )}
+                <Badge variant="secondary">{entry.message_count}</Badge>
+              </span>
             </div>
             <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
               <span className="truncate">
@@ -69,6 +83,24 @@ export function NumberSidebar() {
                 {relativeTime(entry.last_message.date_created)}
               </span>
             </div>
+            {entry.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {entry.tags.slice(0, 4).map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    title={`Filter by tag:${tag}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setSearch(`tag:${tag}`);
+                    }}
+                    className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-500/30 dark:text-amber-400"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
           </Link>
         ))}
       </nav>

@@ -14,7 +14,9 @@ export interface LastMessage {
 export interface NumberSummary {
   number: string;
   message_count: number;
+  unread_count: number;
   opted_out: boolean;
+  tags: string[];
   last_message: LastMessage;
 }
 
@@ -38,6 +40,7 @@ export interface ThreadMessage {
   encoding: string;
   channel: string;
   media: MediaAttachment[];
+  tags: string[];
   date_created: string;
   date_sent: string | null;
   date_updated: string;
@@ -52,8 +55,26 @@ export interface Thread {
   page_size: number;
 }
 
+const TOKEN_KEY = "smspit-token";
+
+export function getDashboardToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? "";
+}
+
+export function setDashboardToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export class UnauthorizedError extends Error {}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const headers = new Headers(init?.headers);
+  const token = getDashboardToken();
+  if (token) headers.set("X-Smspit-Token", token);
+  const response = await fetch(path, { ...init, headers });
+  if (response.status === 401) {
+    throw new UnauthorizedError(`${path} requires the dashboard token`);
+  }
   if (!response.ok) {
     throw new Error(
       `${init?.method ?? "GET"} ${path} failed: ${response.status}`,
@@ -96,7 +117,17 @@ export interface ForcedRule {
   error_code: number;
 }
 
+export interface AutoTagRule {
+  tag: string;
+  to_suffix?: string;
+  from_suffix?: string;
+  body_regex?: string;
+}
+
 export interface SettingsData {
+  auto_tag_rules: AutoTagRule[];
+  retention_max_age_hours: number;
+  retention_max_messages: number;
   inbound_webhook_url: string | null;
   inbound_webhook_method: string;
   account_sid: string;
@@ -131,6 +162,7 @@ export interface WebhookDelivery {
   id: number;
   kind: string;
   url: string;
+  method: string;
   request_params: Record<string, string>;
   response_status: number | null;
   response_body: string | null;
@@ -147,8 +179,21 @@ export interface WebhookLog {
   page_size: number;
 }
 
-export function fetchWebhookLog(page = 0): Promise<WebhookLog> {
-  return request<WebhookLog>(`/api/webhook-log?page=${page}`);
+export interface WebhookLogFilters {
+  kind?: string;
+  result?: string;
+  message_sid?: string;
+}
+
+export function fetchWebhookLog(
+  filters: WebhookLogFilters = {},
+  page = 0,
+): Promise<WebhookLog> {
+  const params = new URLSearchParams({ page: String(page) });
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.result) params.set("result", filters.result);
+  if (filters.message_sid) params.set("message_sid", filters.message_sid);
+  return request<WebhookLog>(`/api/webhook-log?${params}`);
 }
 
 export function retryWebhook(id: number): Promise<WebhookDelivery> {
@@ -188,8 +233,12 @@ export interface LatestCode {
 export async function fetchLatestCode(
   number: string,
 ): Promise<LatestCode | null> {
+  const headers = new Headers();
+  const token = getDashboardToken();
+  if (token) headers.set("X-Smspit-Token", token);
   const response = await fetch(
     `/api/numbers/${encodeURIComponent(number)}/latest-code`,
+    { headers },
   );
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`latest-code failed: ${response.status}`);
@@ -222,4 +271,66 @@ export function setOptOut(recipient: string, optedOut: boolean): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recipient, opted_out: optedOut }),
   });
+}
+
+export function markThreadRead(number: string): Promise<void> {
+  return request<void>(`/api/numbers/${encodeURIComponent(number)}/read`, {
+    method: "POST",
+  });
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export function fetchTags(): Promise<TagCount[]> {
+  return request<TagCount[]>("/api/tags");
+}
+
+export function setMessageTags(
+  sid: string,
+  tags: string[],
+): Promise<{ sid: string; tags: string[] }> {
+  return request(`/api/messages/${sid}/tags`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tags }),
+  });
+}
+
+export interface MessageDetail {
+  message: ThreadMessage;
+  twilio: Record<string, unknown>;
+  raw_params: Record<string, unknown>;
+}
+
+export function fetchMessageDetail(sid: string): Promise<MessageDetail> {
+  return request<MessageDetail>(`/api/messages/${sid}`);
+}
+
+export function deleteMessage(sid: string): Promise<void> {
+  return request<void>(`/api/messages/${sid}`, { method: "DELETE" });
+}
+
+export interface ScheduledMessage extends ThreadMessage {
+  send_at: string;
+}
+
+export function fetchScheduled(): Promise<ScheduledMessage[]> {
+  return request<ScheduledMessage[]>("/api/scheduled");
+}
+
+export function cancelScheduled(sid: string): Promise<ThreadMessage> {
+  return request<ThreadMessage>(`/api/scheduled/${sid}/cancel`, {
+    method: "POST",
+  });
+}
+
+export function exportUrl(format: "json" | "csv", number?: string): string {
+  const params = new URLSearchParams({ format });
+  if (number) params.set("number", number);
+  const token = getDashboardToken();
+  if (token) params.set("token", token);
+  return `/api/export?${params}`;
 }

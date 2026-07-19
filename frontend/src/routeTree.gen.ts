@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ScheduledRouteImport } from './routes/scheduled'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as WebhooksRouteImport } from './routes/webhooks'
 import { Route as NumbersNumberRouteImport } from './routes/numbers.$number'
@@ -17,6 +18,11 @@ import { Route as NumbersNumberRouteImport } from './routes/numbers.$number'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScheduledRoute = ScheduledRouteImport.update({
+  id: '/scheduled',
+  path: '/scheduled',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -37,12 +43,14 @@ const NumbersNumberRoute = NumbersNumberRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/scheduled': typeof ScheduledRoute
   '/settings': typeof SettingsRoute
   '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/scheduled': typeof ScheduledRoute
   '/settings': typeof SettingsRoute
   '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
@@ -50,20 +58,28 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/scheduled': typeof ScheduledRoute
   '/settings': typeof SettingsRoute
   '/webhooks': typeof WebhooksRoute
   '/numbers/$number': typeof NumbersNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/webhooks' | '/numbers/$number'
+  fullPaths: '/' | '/scheduled' | '/settings' | '/webhooks' | '/numbers/$number'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/webhooks' | '/numbers/$number'
-  id: '__root__' | '/' | '/settings' | '/webhooks' | '/numbers/$number'
+  to: '/' | '/scheduled' | '/settings' | '/webhooks' | '/numbers/$number'
+  id:
+    | '__root__'
+    | '/'
+    | '/scheduled'
+    | '/settings'
+    | '/webhooks'
+    | '/numbers/$number'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ScheduledRoute: typeof ScheduledRoute
   SettingsRoute: typeof SettingsRoute
   WebhooksRoute: typeof WebhooksRoute
   NumbersNumberRoute: typeof NumbersNumberRoute
@@ -76,6 +92,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scheduled': {
+      id: '/scheduled'
+      path: '/scheduled'
+      fullPath: '/scheduled'
+      preLoaderRoute: typeof ScheduledRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -104,6 +127,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ScheduledRoute: ScheduledRoute,
   SettingsRoute: SettingsRoute,
   WebhooksRoute: WebhooksRoute,
   NumbersNumberRoute: NumbersNumberRoute,

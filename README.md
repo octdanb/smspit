@@ -167,14 +167,27 @@ Releases are semver git tags: pushing `v1.2.3` publishes the image tagged `1.2.3
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+## Dashboard workflow features
+
+- **Tags** (Mailpit-style): tag messages manually in the detail drawer, define auto-tag rules
+  in settings (`[{"tag": "otp", "body_regex": "code is \\d+"}]`, also `to_suffix`/`from_suffix`),
+  or send with Twilio's `Tags` parameter — they surface as `key:value` tags. Filter the sidebar
+  with `tag:` in search or by clicking a chip; `GET /api/tags` lists them for automation.
+- **Unread indicators** per thread; opening a thread marks it read.
+- **Message detail drawer** (click any bubble): full Twilio-shaped JSON, the original request
+  params, tag editing, copy SID, delete.
+- **Scheduled view** with cancel, **webhook log filters** (kind / result / message SID),
+  **export** (thread or everything, JSON/CSV), and **retention** (auto-purge by age or count).
+- **Optional dashboard auth**: set `SMSPIT_DASHBOARD_TOKEN` and the internal API + dashboard
+  require it (`X-Smspit-Token` header, or open `http://localhost:8025/?token=…` once); Twilio
+  routes and `/api/health` are unaffected.
+
 ## Roadmap
 
-Phases 1–8 of [SPEC.md](SPEC.md#12-build-phases) shipped in v0.1.0. Planned next
-([SPEC.md §12](SPEC.md#12-build-phases), phases 9–11): remaining API fidelity (Feedback
-subresource, content templates, GET webhooks, WhatsApp session window, per-number webhook
-config), dashboard workflow features (Mailpit-style message tags with auto-tag rules, unread
-indicators, message detail drawer, retention, export), and conformance hardening (real
-twilio-python/twilio-node SDK tests in CI, Playwright E2E suite, multi-arch images).
+Phases 1–10 of [SPEC.md](SPEC.md#12-build-phases) are shipped. Remaining
+([SPEC.md §12](SPEC.md#12-build-phases), phase 11): conformance hardening — real
+twilio-python/twilio-node SDK tests in CI, a Playwright E2E suite, multi-arch images, a seed
+API, and webhook chaos options.
 
 ## Non-goals
 
