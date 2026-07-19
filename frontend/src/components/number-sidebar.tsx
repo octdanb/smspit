@@ -26,7 +26,8 @@ export function NumberSidebar() {
       <div className="relative border-b p-3">
         <Search className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search numbers or messages…"
+          title="Operators: tag: from: to: status: has:media is:unread before:/after:YYYY-MM-DD"
+          placeholder="Search… (tag: from: status: is:unread…)"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="pl-8"

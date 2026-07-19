@@ -152,6 +152,56 @@ async def _attempt(
     return delivery
 
 
+async def deliver_capture(payload: dict) -> WebhookDelivery | None:
+    """POST every captured message as JSON to capture_webhook_url (Mailpit's
+    message webhook analog). Fire-and-forget: callers create_task this so the
+    Twilio send path never blocks on it."""
+    with Session(get_engine()) as session:
+        url = get_settings(session).capture_webhook_url
+    if not url:
+        return None
+
+    started = time.monotonic()
+    response_status: int | None = None
+    response_body: str | None = None
+    error: str | None = None
+    try:
+        async with httpx.AsyncClient(transport=_transport, timeout=10) as client:
+            response = await client.post(url, json=payload)
+        response_status = response.status_code
+        response_body = response.text[:RESPONSE_BODY_LIMIT]
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+
+    delivery = WebhookDelivery(
+        kind="capture",
+        url=url,
+        method="POST",
+        request_params=json.dumps(payload),
+        response_status=response_status,
+        response_body=response_body,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        error=error,
+        message_sid=payload.get("message", {}).get("sid"),
+    )
+    with Session(get_engine()) as session:
+        session.add(delivery)
+        session.commit()
+        session.refresh(delivery)
+
+    await manager.broadcast(
+        "webhook.delivered",
+        {
+            "id": delivery.id,
+            "kind": "capture",
+            "url": url,
+            "response_status": response_status,
+            "error": error,
+        },
+    )
+    return delivery
+
+
 async def deliver_status_callback(message: Message, status: str) -> WebhookDelivery | None:
     if not message.status_callback_url:
         return None

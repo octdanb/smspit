@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
+import { notifyNewMessage } from "@/lib/notify";
+
 export interface WsEvent {
   type: string;
   data: Record<string, unknown>;
@@ -81,7 +83,15 @@ export function useLiveUpdates(): LiveStatus {
         queryClient.invalidateQueries();
       };
       socket.onmessage = (event) => {
-        handleWsEvent(queryClient, JSON.parse(event.data as string) as WsEvent);
+        const parsed = JSON.parse(event.data as string) as WsEvent;
+        handleWsEvent(queryClient, parsed);
+        if (parsed.type === "message.created") {
+          const message = parsed.data.message as { body?: string } | undefined;
+          notifyNewMessage(
+            String(parsed.data.number ?? ""),
+            message?.body ?? "",
+          );
+        }
       };
       socket.onclose = () => {
         if (stopped) return;

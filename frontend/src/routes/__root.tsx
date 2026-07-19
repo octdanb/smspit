@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
 import {
+  Bell,
+  BellOff,
   CalendarClock,
   KeyRound,
   MessageSquareText,
@@ -16,6 +18,7 @@ import { useLiveUpdates, type LiveStatus } from "@/api/ws";
 import { NumberSidebar } from "@/components/number-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { notificationsEnabled, setNotificationsEnabled } from "@/lib/notify";
 import { applyTheme, initialTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +64,7 @@ function TokenGate({ onSubmit }: { onSubmit: (token: string) => void }) {
 function RootLayout() {
   const status = useLiveUpdates();
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [notify, setNotify] = useState(notificationsEnabled);
 
   useEffect(() => {
     applyTheme(theme);
@@ -125,6 +129,20 @@ function RootLayout() {
             Settings
           </Link>
         </nav>
+        <Button
+          variant="ghost"
+          size="icon"
+          title={
+            notify
+              ? "Disable desktop notifications"
+              : "Notify me of new messages when this tab is hidden"
+          }
+          onClick={async () =>
+            setNotify(await setNotificationsEnabled(!notify))
+          }
+        >
+          {notify ? <Bell /> : <BellOff />}
+        </Button>
         <Button
           variant="ghost"
           size="icon"

@@ -570,6 +570,28 @@ Twilio's real surface and Mailpit's feature set.
     - Webhook chaos options: injectable delivery failures/latency and Twilio-style status
       callback retries, for testing app-side resilience
 
+12. **Mailpit parity** (from a feature comparison against Mailpit):
+    - **Release / forwarding to real Twilio** (Mailpit's SMTP relay analog): configure real
+      Twilio credentials (`real_account_sid`/`real_auth_token`/`real_from_number`) plus a
+      mandatory recipient **allowlist**; `POST /api/messages/{sid}/release` re-sends a captured
+      message through api.twilio.com (optionally to an override recipient); optional
+      `auto_forward_to` forwards every captured outbound message to a tester's phone.
+      Every release attempt is recorded in the webhook log (kind `release`). Without an
+      allowlist entry the release is refused — the mock must never text real people by accident.
+    - **Search operators** (Mailpit's advanced search analog): `from:`, `to:`, `status:`,
+      `is:unread`, `has:media`, `before:`/`after:` (dates), alongside the existing `tag:` and
+      free text, all combinable in the sidebar search and `GET /api/numbers?q=`.
+    - **Capture webhook** (Mailpit's received-message webhook): `capture_webhook_url` receives a
+      JSON POST for every captured message (any direction), fire-and-forget so the Twilio send
+      path never blocks; logged with kind `capture`.
+    - **Browser notifications**: opt-in toggle; new messages raise a desktop notification when
+      the dashboard tab is hidden.
+    - **Encoding check** (Mailpit's HTML-check analog): the message detail drawer explains the
+      segment math — encoding, length, segment count, the exact characters that force UCS-2,
+      and what Smart Encoding would save.
+    - Deliberately skipped: POP3 (no SMS analog), single-binary distribution (Docker covers it),
+      link checking (future), retention stays off by default (test history is precious;
+      Mailpit defaults to keeping 500).
 ## 13. Pointing SDKs / Apps at the Mock
 
 Everything is served on one port; route families are disambiguated by path

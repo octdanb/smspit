@@ -10,7 +10,7 @@ from fastapi import Response as FastAPIResponse
 from pydantic import BaseModel
 from sqlmodel import Session, col, delete, func, or_, select
 
-from . import inbound, media, optout, otp, tags, webhooks
+from . import inbound, media, optout, otp, release, tags, webhooks
 from .db import get_session, get_settings
 from .models import (
     MediaItem,
@@ -81,13 +81,54 @@ def list_numbers(
         for pair in session.exec(select(OptOut).where(OptOut.opted_out == True)).all()  # noqa: E712
     }
 
-    # `tag:foo` tokens in the query filter by tag; remaining text searches
-    # numbers and full message bodies.
+    # Search operators (Mailpit-style): tag:x from:x to:x status:x has:media
+    # is:unread before:YYYY-MM-DD after:YYYY-MM-DD, plus free text over
+    # numbers and full message bodies. A thread matches when at least one of
+    # its messages satisfies every message-level condition.
     raw_query = (q or "").strip().lower()
-    tag_filters = {
-        token.removeprefix("tag:") for token in raw_query.split() if token.startswith("tag:")
-    }
-    query = " ".join(t for t in raw_query.split() if not t.startswith("tag:"))
+    tokens = raw_query.split()
+    tag_filters = {t.removeprefix("tag:") for t in tokens if t.startswith("tag:")}
+    ops: dict[str, str] = {}
+    for prefix in ("from:", "to:", "status:", "before:", "after:"):
+        for token in tokens:
+            if token.startswith(prefix):
+                ops[prefix[:-1]] = token[len(prefix) :]
+    has_media = "has:media" in tokens
+    is_unread = "is:unread" in tokens
+    operator_prefixes = ("tag:", "from:", "to:", "status:", "before:", "after:", "has:", "is:")
+    query = " ".join(t for t in tokens if not t.startswith(operator_prefixes))
+
+    def parse_date(value: str) -> datetime | None:
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+
+    before = parse_date(ops["before"]) if "before" in ops else None
+    after = parse_date(ops["after"]) if "after" in ops else None
+
+    def message_matches(message: Message) -> bool:
+        if (
+            query
+            and query not in counterparty(message).lower()
+            and query not in message.body.lower()
+        ):
+            return False
+        if "from" in ops and ops["from"] not in message.from_number.lower():
+            return False
+        if "to" in ops and ops["to"] not in message.to_number.lower():
+            return False
+        if "status" in ops and message.status != ops["status"]:
+            return False
+        if has_media and message.num_media == 0:
+            return False
+        if before is not None and message.date_created >= before:
+            return False
+        if after is not None and message.date_created < after:
+            return False
+        return True
+
+    has_message_conditions = bool(query or ops or has_media or before or after)
 
     message_tags = tags.tags_for_many(session, [m.sid for m in messages])
     read_marks = {row.number: row.last_read_at for row in session.exec(select(ThreadRead)).all()}
@@ -96,7 +137,7 @@ def list_numbers(
     threads: dict[str, dict] = {}
     for message in messages:
         number = counterparty(message)
-        if query and (query in number.lower() or query in message.body.lower()):
+        if has_message_conditions and message_matches(message):
             matching_numbers.add(number)
         thread = threads.setdefault(
             number,
@@ -122,12 +163,14 @@ def list_numbers(
         }
 
     results = list(threads.values())
-    if query:
+    if has_message_conditions:
         results = [t for t in results if t["number"] in matching_numbers]
     if tag_filters:
         results = [
             t for t in results if all(tag in {x.lower() for x in t["tags"]} for tag in tag_filters)
         ]
+    if is_unread:
+        results = [t for t in results if t["unread_count"] > 0]
     for thread in results:
         thread["tags"] = sorted(thread["tags"])
     return sorted(
@@ -201,16 +244,54 @@ async def update_message_tags(
 @router.get("/messages/{sid}")
 def message_detail(sid: str, session: Session = Depends(get_session)) -> dict:
     """Everything the detail drawer needs: internal + Twilio shape + raw params."""
+    from .segments import GSM7_BASIC, GSM7_EXTENDED, segment_count
     from .twilio_api import message_to_json
 
     message = session.exec(select(Message).where(Message.sid == sid)).first()
     if message is None:
         raise HTTPException(status_code=404, detail="Message not found")
+
+    # Encoding check (Mailpit's HTML-check analog): explain the segment math.
+    encoding, segments = segment_count(message.body)
+    smart_encoding, smart_segments = segment_count(message.body, smart_encoded=True)
+    non_gsm = [
+        {"char": char, "index": index}
+        for index, char in enumerate(message.body)
+        if char not in GSM7_BASIC and char not in GSM7_EXTENDED
+    ][:50]
     return {
         "message": message_to_internal(session, message),
         "twilio": message_to_json(message),
         "raw_params": json.loads(message.raw_params or "{}"),
+        "encoding_check": {
+            "encoding": encoding,
+            "length": len(message.body),
+            "num_segments": segments,
+            "non_gsm_chars": non_gsm,
+            "smart_encoding_would_use": smart_encoding,
+            "smart_encoding_segments": smart_segments,
+        },
     }
+
+
+class ReleasePayload(BaseModel):
+    to: str | None = None  # defaults to the message's original recipient
+
+
+@router.post("/messages/{sid}/release")
+async def release_endpoint(
+    sid: str, payload: ReleasePayload | None = None, session: Session = Depends(get_session)
+) -> dict:
+    """Re-send a captured message through REAL Twilio (allowlisted recipients only)."""
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    try:
+        return await release.release_message(
+            session, message, to_override=payload.to if payload else None
+        )
+    except release.ReleaseError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.delete("/messages/{sid}", status_code=204)
@@ -534,6 +615,12 @@ def settings_to_json(settings) -> dict:
         "webhook_latency_ms": settings.webhook_latency_ms,
         "webhook_failure_rate": settings.webhook_failure_rate,
         "webhook_retry_count": settings.webhook_retry_count,
+        "real_account_sid": settings.real_account_sid,
+        "real_auth_token": settings.real_auth_token,
+        "real_from_number": settings.real_from_number,
+        "release_allowlist": json.loads(settings.release_allowlist or "[]"),
+        "auto_forward_to": settings.auto_forward_to,
+        "capture_webhook_url": settings.capture_webhook_url,
     }
 
 
@@ -571,6 +658,12 @@ class SettingsUpdate(BaseModel):
     webhook_latency_ms: int | None = None
     webhook_failure_rate: float | None = None
     webhook_retry_count: int | None = None
+    real_account_sid: str | None = None
+    real_auth_token: str | None = None
+    real_from_number: str | None = None
+    release_allowlist: list[str] | None = None
+    auto_forward_to: str | None = None
+    capture_webhook_url: str | None = None
 
 
 @router.get("/settings")
@@ -590,6 +683,7 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
             "lookup_line_types",
             "verified_numbers",
             "auto_tag_rules",
+            "release_allowlist",
         ):
             setattr(settings, key, json.dumps(value))
         else:

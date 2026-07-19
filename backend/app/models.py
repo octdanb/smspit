@@ -109,6 +109,14 @@ class Settings(SQLModel, table=True):
     webhook_latency_ms: int = 0  # artificial delay before every delivery
     webhook_failure_rate: float = 0.0  # 0..1 chance a delivery is dropped (logged as error)
     webhook_retry_count: int = 0  # retries after a failed delivery (error or 5xx)
+    # Phase 12: release/forwarding through REAL Twilio (Mailpit's relay analog).
+    real_account_sid: str = ""
+    real_auth_token: str = ""
+    real_from_number: str = ""  # the real Twilio number releases are sent from
+    release_allowlist: str = "[]"  # JSON list of E.164 numbers releases may target
+    auto_forward_to: str = ""  # forward every captured outbound message here (must be allowlisted)
+    # Phase 12: JSON POST for every captured message (Mailpit's message webhook).
+    capture_webhook_url: str = ""
 
 
 class MessageTag(SQLModel, table=True):

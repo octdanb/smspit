@@ -128,6 +128,12 @@ export interface SettingsData {
   auto_tag_rules: AutoTagRule[];
   retention_max_age_hours: number;
   retention_max_messages: number;
+  real_account_sid: string;
+  real_auth_token: string;
+  real_from_number: string;
+  release_allowlist: string[];
+  auto_forward_to: string;
+  capture_webhook_url: string;
   inbound_webhook_url: string | null;
   inbound_webhook_method: string;
   account_sid: string;
@@ -299,10 +305,48 @@ export function setMessageTags(
   });
 }
 
+export interface EncodingCheck {
+  encoding: string;
+  length: number;
+  num_segments: number;
+  non_gsm_chars: { char: string; index: number }[];
+  smart_encoding_would_use: string;
+  smart_encoding_segments: number;
+}
+
 export interface MessageDetail {
   message: ThreadMessage;
   twilio: Record<string, unknown>;
   raw_params: Record<string, unknown>;
+  encoding_check: EncodingCheck;
+}
+
+export interface ReleaseResult {
+  released: boolean;
+  to: string;
+  from: string;
+  real_sid: string | null;
+  response_status: number | null;
+  error: string | null;
+}
+
+export async function releaseMessage(
+  sid: string,
+  to?: string,
+): Promise<ReleaseResult> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const token = getDashboardToken();
+  if (token) headers.set("X-Smspit-Token", token);
+  const response = await fetch(`/api/messages/${sid}/release`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(to ? { to } : {}),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.detail ?? `release failed: ${response.status}`);
+  }
+  return data as ReleaseResult;
 }
 
 export function fetchMessageDetail(sid: string): Promise<MessageDetail> {
