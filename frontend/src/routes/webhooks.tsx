@@ -57,7 +57,7 @@ function DeliveryRow({ delivery }: { delivery: WebhookDelivery }) {
         <span className="w-16 text-right text-xs text-muted-foreground">
           {delivery.duration_ms}ms
         </span>
-        <span className="w-32 text-right text-xs text-muted-foreground">
+        <span className="hidden w-32 text-right text-xs text-muted-foreground sm:inline">
           {messageTime(delivery.created_at)}
         </span>
       </button>
@@ -113,7 +113,7 @@ function WebhooksPage() {
             X-Twilio-Signature.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
           <select
             aria-label="Filter by kind"
             className={selectClass}
@@ -135,7 +135,7 @@ function WebhooksPage() {
             <option value="error">errors</option>
           </select>
           <Input
-            className="h-8 w-64 text-xs"
+            className="h-8 w-full text-xs sm:w-64"
             placeholder="Filter by message SID…"
             value={messageSid}
             onChange={(event) => setMessageSid(event.target.value)}

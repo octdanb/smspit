@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Ban, Download, Trash2 } from "lucide-react";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Ban, Download, Trash2 } from "lucide-react";
 
 import {
   clearThread,
@@ -77,10 +77,21 @@ function ThreadView() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div>
-            <h2 className="font-semibold">{number}</h2>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-2 py-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            title="Back to inbox"
+            asChild
+          >
+            <Link to="/">
+              <ArrowLeft />
+            </Link>
+          </Button>
+          <div className="min-w-0">
+            <h2 className="truncate font-semibold">{number}</h2>
             {thread.isSuccess && (
               <p className="text-xs text-muted-foreground">
                 {thread.data.total} message{thread.data.total === 1 ? "" : "s"}
@@ -101,7 +112,7 @@ function ThreadView() {
           >
             <a href={exportUrl("json", number)} download>
               <Download />
-              Export
+              <span className="hidden sm:inline">Export</span>
             </a>
           </Button>
           <Button
@@ -116,16 +127,19 @@ function ThreadView() {
             disabled={toggleOptOut.isPending}
           >
             <Ban />
-            {optedOut ? "Opt back in" : "Opt out"}
+            <span className="hidden sm:inline">
+              {optedOut ? "Opt back in" : "Opt out"}
+            </span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
+            title="Clear thread"
             onClick={() => clear.mutate()}
             disabled={clear.isPending}
           >
             <Trash2 />
-            Clear thread
+            <span className="hidden sm:inline">Clear thread</span>
           </Button>
         </div>
       </header>

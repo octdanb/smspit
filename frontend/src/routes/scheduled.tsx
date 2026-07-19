@@ -40,7 +40,7 @@ function ScheduledPage() {
         {scheduled.data?.map((message) => (
           <div
             key={message.sid}
-            className="flex items-center gap-3 border-b px-4 py-2.5 text-sm"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2.5 text-sm"
           >
             <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
             <span className="font-medium">{message.to_number}</span>

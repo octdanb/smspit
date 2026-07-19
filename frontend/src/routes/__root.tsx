@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createRootRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   Bell,
   BellOff,
@@ -65,6 +70,11 @@ function RootLayout() {
   const status = useLiveUpdates();
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [notify, setNotify] = useState(notificationsEnabled);
+  // On phones the inbox list IS the home screen; other routes take over
+  // the full width and offer a back affordance instead of the sidebar.
+  const isInbox = useRouterState({
+    select: (state) => state.location.pathname === "/",
+  });
 
   useEffect(() => {
     applyTheme(theme);
@@ -103,30 +113,33 @@ function RootLayout() {
           <MessageSquareText className="size-5" />
           <h1 className="text-lg font-semibold tracking-tight">smspit</h1>
         </Link>
-        <span className="text-sm text-muted-foreground">
+        <span className="hidden text-sm text-muted-foreground lg:inline">
           Twilio-compatible SMS mock
         </span>
         <nav className="ml-auto flex items-center gap-1">
           <Link
             to="/scheduled"
+            title="Scheduled"
             className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
           >
             <CalendarClock className="size-4" />
-            Scheduled
+            <span className="hidden md:inline">Scheduled</span>
           </Link>
           <Link
             to="/webhooks"
+            title="Webhooks"
             className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
           >
             <Webhook className="size-4" />
-            Webhooks
+            <span className="hidden md:inline">Webhooks</span>
           </Link>
           <Link
             to="/settings"
+            title="Settings"
             className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
           >
             <Settings className="size-4" />
-            Settings
+            <span className="hidden md:inline">Settings</span>
           </Link>
         </nav>
         <Button
@@ -160,12 +173,17 @@ function RootLayout() {
           <span
             className={cn("size-2 rounded-full", statusStyles[status].dot)}
           />
-          {statusStyles[status].label}
+          <span className="hidden sm:inline">{statusStyles[status].label}</span>
         </span>
       </header>
       <div className="flex min-h-0 flex-1">
-        <NumberSidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <NumberSidebar className={isInbox ? "flex" : "hidden md:flex"} />
+        <main
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto",
+            isInbox && "hidden md:block",
+          )}
+        >
           <Outlet />
         </main>
       </div>

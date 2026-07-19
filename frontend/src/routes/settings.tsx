@@ -95,7 +95,7 @@ function SettingsPage() {
               }
             />
           </label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               Account SID
               <Input
@@ -138,7 +138,7 @@ function SettingsPage() {
             />
             Simulate delivery lifecycle
           </label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               Delay between statuses (ms)
               <Input
@@ -232,7 +232,7 @@ function SettingsPage() {
             />
             Trial mode (sends only to verified numbers, otherwise 21608)
           </label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               Verified numbers (comma-separated)
               <Input
@@ -278,7 +278,7 @@ function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <label className="grid gap-1.5 text-sm">
               Real Account SID
               <Input
@@ -310,7 +310,7 @@ function SettingsPage() {
               />
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               Release allowlist (comma-separated — required for any release)
               <Input
@@ -375,7 +375,7 @@ function SettingsPage() {
               <span className="text-xs text-destructive">{rulesError}</span>
             )}
           </label>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm">
               Delete messages older than (hours, 0 = keep forever)
               <Input
