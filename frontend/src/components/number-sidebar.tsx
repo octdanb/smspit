@@ -11,14 +11,15 @@ import { cn } from "@/lib/utils";
 
 export function NumberSidebar() {
   const [search, setSearch] = useState("");
-  // Kept fresh by WebSocket-driven invalidation (see api/ws.ts).
-  const numbers = useQuery({ queryKey: ["numbers"], queryFn: fetchNumbers });
+  // Kept fresh by WebSocket-driven invalidation (see api/ws.ts). The search
+  // runs server-side across full message bodies, not just previews.
+  const numbers = useQuery({
+    queryKey: ["numbers", search],
+    queryFn: () => fetchNumbers(search),
+    placeholderData: (previous) => previous,
+  });
 
-  const filtered = (numbers.data ?? []).filter(
-    (entry) =>
-      entry.number.toLowerCase().includes(search.toLowerCase()) ||
-      entry.last_message.body.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = numbers.data ?? [];
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-r">

@@ -69,8 +69,9 @@ export function fetchHealth(): Promise<Health> {
   return request<Health>("/api/health");
 }
 
-export function fetchNumbers(): Promise<NumberSummary[]> {
-  return request<NumberSummary[]>("/api/numbers");
+export function fetchNumbers(q = ""): Promise<NumberSummary[]> {
+  const suffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  return request<NumberSummary[]>(`/api/numbers${suffix}`);
 }
 
 export function fetchThread(number: string, page = 0): Promise<Thread> {
@@ -104,6 +105,12 @@ export interface SettingsData {
   status_delay_ms: number;
   failure_rate: number;
   forced_rules: ForcedRule[];
+  strict_auth: boolean;
+  strict_validation: boolean;
+  enforce_optouts: boolean;
+  trial_mode: boolean;
+  verified_numbers: string[];
+  rate_limit_per_minute: number;
 }
 
 export function fetchSettings(): Promise<SettingsData> {

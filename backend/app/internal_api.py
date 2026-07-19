@@ -52,8 +52,13 @@ def counterparty(message: Message) -> str:
 
 
 @router.get("/numbers")
-def list_numbers(session: Session = Depends(get_session)) -> list[dict]:
-    """All counterparty numbers with message counts and the latest message preview."""
+def list_numbers(
+    session: Session = Depends(get_session), q: str | None = Query(None)
+) -> list[dict]:
+    """All counterparty numbers with message counts and the latest message preview.
+
+    ?q= searches numbers AND full message bodies (not just the preview).
+    """
     messages = session.exec(
         select(Message).order_by(col(Message.date_created).asc(), col(Message.id).asc())
     ).all()
@@ -63,9 +68,13 @@ def list_numbers(session: Session = Depends(get_session)) -> list[dict]:
         for pair in session.exec(select(OptOut).where(OptOut.opted_out == True)).all()  # noqa: E712
     }
 
+    query = (q or "").strip().lower()
+    matching_numbers: set[str] = set()
     threads: dict[str, dict] = {}
     for message in messages:
         number = counterparty(message)
+        if query and (query in number.lower() or query in message.body.lower()):
+            matching_numbers.add(number)
         thread = threads.setdefault(
             number,
             {"number": number, "message_count": 0, "opted_out": number in opted_out_numbers},
@@ -79,8 +88,11 @@ def list_numbers(session: Session = Depends(get_session)) -> list[dict]:
             "date_created": iso(message.date_created),
         }
 
+    results = threads.values()
+    if query:
+        results = [t for t in results if t["number"] in matching_numbers]
     return sorted(
-        threads.values(),
+        results,
         key=lambda t: t["last_message"]["date_created"],
         reverse=True,
     )
@@ -251,6 +263,11 @@ def settings_to_json(settings) -> dict:
         "webhook_geo_params": json.loads(settings.webhook_geo_params or "{}"),
         "verify_ttl_seconds": settings.verify_ttl_seconds,
         "lookup_line_types": json.loads(settings.lookup_line_types or "{}"),
+        "strict_auth": settings.strict_auth,
+        "strict_validation": settings.strict_validation,
+        "trial_mode": settings.trial_mode,
+        "verified_numbers": json.loads(settings.verified_numbers or "[]"),
+        "rate_limit_per_minute": settings.rate_limit_per_minute,
     }
 
 
@@ -275,6 +292,11 @@ class SettingsUpdate(BaseModel):
     webhook_geo_params: dict[str, str] | None = None
     verify_ttl_seconds: int | None = None
     lookup_line_types: dict[str, str] | None = None
+    strict_auth: bool | None = None
+    strict_validation: bool | None = None
+    trial_mode: bool | None = None
+    verified_numbers: list[str] | None = None
+    rate_limit_per_minute: int | None = None
 
 
 @router.get("/settings")
@@ -287,7 +309,13 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
     settings = get_settings(session)
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
-        if key in ("forced_rules", "optout_config", "webhook_geo_params", "lookup_line_types"):
+        if key in (
+            "forced_rules",
+            "optout_config",
+            "webhook_geo_params",
+            "lookup_line_types",
+            "verified_numbers",
+        ):
             setattr(settings, key, json.dumps(value))
         else:
             setattr(settings, key, value)

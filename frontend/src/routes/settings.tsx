@@ -159,6 +159,95 @@ function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Strict mode</CardTitle>
+          <CardDescription>
+            Permissive by default. Turn these on to validate like real Twilio
+            and test your app's error handling (real Twilio error codes).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4"
+              checked={draft.strict_auth ?? false}
+              onChange={(e) =>
+                setDraft({ ...draft, strict_auth: e.target.checked })
+              }
+            />
+            Validate credentials (wrong SID/token → 401 / 20003)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4"
+              checked={draft.strict_validation ?? false}
+              onChange={(e) =>
+                setDraft({ ...draft, strict_validation: e.target.checked })
+              }
+            />
+            Validate numbers (bad To → 21211, bad From → 21212, landline per
+            Lookup overrides → 21614)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4"
+              checked={draft.enforce_optouts ?? false}
+              onChange={(e) =>
+                setDraft({ ...draft, enforce_optouts: e.target.checked })
+              }
+            />
+            Enforce opt-outs (send to STOPped number → 21610)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4"
+              checked={draft.trial_mode ?? false}
+              onChange={(e) =>
+                setDraft({ ...draft, trial_mode: e.target.checked })
+              }
+            />
+            Trial mode (sends only to verified numbers, otherwise 21608)
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="grid gap-1.5 text-sm">
+              Verified numbers (comma-separated)
+              <Input
+                placeholder="+64211234567, +15551234567"
+                value={(draft.verified_numbers ?? []).join(", ")}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    verified_numbers: e.target.value
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              Rate limit per minute (0 = off, over → 429 / 20429)
+              <Input
+                type="number"
+                min={0}
+                value={draft.rate_limit_per_minute ?? 0}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    rate_limit_per_minute: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex items-center justify-between">
         <Button
           variant="destructive"

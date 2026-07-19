@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react";
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { MessageSquareText, Settings, Webhook } from "lucide-react";
+import { MessageSquareText, Moon, Settings, Sun, Webhook } from "lucide-react";
 
 import { useLiveUpdates, type LiveStatus } from "@/api/ws";
 import { NumberSidebar } from "@/components/number-sidebar";
+import { Button } from "@/components/ui/button";
+import { applyTheme, initialTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 export const Route = createRootRoute({
@@ -17,6 +20,11 @@ const statusStyles: Record<LiveStatus, { dot: string; label: string }> = {
 
 function RootLayout() {
   const status = useLiveUpdates();
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   return (
     <div className="flex h-screen flex-col">
@@ -44,6 +52,16 @@ function RootLayout() {
             Settings
           </Link>
         </nav>
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Toggle dark mode"
+          onClick={() =>
+            setTheme((value) => (value === "dark" ? "light" : "dark"))
+          }
+        >
+          {theme === "dark" ? <Sun /> : <Moon />}
+        </Button>
         <span
           className="flex items-center gap-1.5 text-xs text-muted-foreground"
           title="Dashboard live-update connection"

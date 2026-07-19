@@ -91,6 +91,12 @@ class Settings(SQLModel, table=True):
     # Lookup v2 (phase 7): JSON dict {E164: line type} overriding the default
     # "mobile" for line_type_intelligence (e.g. {"+15551234567": "nonFixedVoip"}).
     lookup_line_types: str = "{}"
+    # Strict mode (phase 8) — everything defaults to permissive.
+    strict_auth: bool = False  # Basic creds must match account_sid/auth_token (20003)
+    strict_validation: bool = False  # E.164 To/From checks (21211/21212), landline 21614
+    trial_mode: bool = False  # sends allowed only to verified_numbers (21608)
+    verified_numbers: str = "[]"  # JSON list of E.164 numbers, used by trial_mode
+    rate_limit_per_minute: int = 0  # 0 = off; otherwise 429/20429 past the limit
 
 
 class MessagingService(SQLModel, table=True):

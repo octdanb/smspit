@@ -1,15 +1,17 @@
 """Twilio Programmable Messaging API emulation (2010-04-01): Messages resource."""
 
 import json
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from urllib.parse import urlencode
 
+import phonenumbers
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from . import lifecycle, media, optout
 from .db import get_session, get_settings
@@ -29,10 +31,17 @@ _basic = HTTPBasic(auto_error=False)
 
 def require_basic_auth(
     credentials: HTTPBasicCredentials | None = Depends(_basic),
+    session: Session = Depends(get_session),
 ) -> HTTPBasicCredentials:
-    """Permissive HTTP Basic: any non-empty credentials pass (strict mode lands later)."""
+    """HTTP Basic: permissive by default (any non-empty credentials); with
+    strict_auth on, credentials must match the configured account SID + token."""
     if credentials is None or not credentials.username:
         raise auth_error()
+    settings = get_settings(session)
+    if settings.strict_auth and not (
+        credentials.username == settings.account_sid and credentials.password == settings.auth_token
+    ):
+        raise TwilioError(20003, "Authentication Error - invalid credentials", 401)
     return credentials
 
 
@@ -81,6 +90,29 @@ def parse_bool(value: str | None) -> bool:
     return (value or "").lower() == "true"
 
 
+ALPHA_SENDER = re.compile(r"^(?=.*[A-Za-z])[A-Za-z0-9 _&+-]{1,11}$")
+SHORT_CODE = re.compile(r"^\d{5,6}$")
+
+
+def _strip_channel(number: str) -> str:
+    return number.removeprefix("whatsapp:")
+
+
+def is_valid_e164(number: str) -> bool:
+    # is_possible_number (structure/length), not is_valid_number: dev tools are
+    # fed fictional 555 numbers all day, and Twilio-grade carrier validation
+    # would reject them. Lookup v2 keeps full validity checking.
+    try:
+        return phonenumbers.is_possible_number(phonenumbers.parse(_strip_channel(number)))
+    except phonenumbers.NumberParseException:
+        return False
+
+
+def is_valid_sender(sender: str) -> bool:
+    bare = _strip_channel(sender)
+    return is_valid_e164(bare) or bool(SHORT_CODE.match(bare)) or bool(ALPHA_SENDER.match(bare))
+
+
 def parse_filter_dt(value: str) -> datetime:
     """Parse a DateSent filter (YYYY-MM-DD or ISO 8601) to naive UTC."""
     try:
@@ -126,6 +158,33 @@ async def create_message(
         raise TwilioError(21617, "The concatenated message body exceeds the 1600 character limit.")
 
     settings = get_settings(session)
+    if settings.strict_validation:
+        if not is_valid_e164(to):
+            raise TwilioError(21211, f"The 'To' number {to} is not a valid phone number.")
+        if from_ and not is_valid_sender(from_):
+            raise TwilioError(21212, f"The 'From' number {from_} is not a valid phone number.")
+        line_types = json.loads(settings.lookup_line_types or "{}")
+        if line_types.get(_strip_channel(to)) == "landline":
+            raise TwilioError(21614, f"'To' number {to} is not a valid mobile number.")
+    if settings.trial_mode:
+        verified = json.loads(settings.verified_numbers or "[]")
+        if to not in verified:
+            raise TwilioError(
+                21608,
+                f"The number {to} is unverified. Trial accounts may only send to verified numbers.",
+            )
+    if settings.rate_limit_per_minute > 0:
+        window_start = utcnow() - timedelta(seconds=60)
+        recent = session.exec(
+            select(func.count())
+            .select_from(Message)
+            .where(
+                col(Message.direction).startswith("outbound"),
+                col(Message.date_created) >= window_start,
+            )
+        ).one()
+        if recent >= settings.rate_limit_per_minute:
+            raise TwilioError(20429, "Too Many Requests", http_status=429)
     if from_ and settings.enforce_optouts and optout.is_opted_out(session, to, from_):
         raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
 
