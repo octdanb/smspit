@@ -145,8 +145,8 @@ smspit validate like real Twilio, with real error codes. The full reference is i
 
 ## Hosting a shared instance (UAT)
 
-smspit works well as a shared UAT service (say, `sms.project-name.uat.octave.nz`) so
-integration environments can exercise the full Twilio flow without real credentials:
+smspit works well as a shared UAT service so integration environments can exercise the full
+Twilio flow without real credentials:
 
 1. Deploy the container behind your TLS-terminating ingress and point the UAT app's
    `TWILIO_API_BASE_URL` at it.
