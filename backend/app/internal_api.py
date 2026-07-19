@@ -552,7 +552,17 @@ async def media_content(media_sid: str, session: Session = Depends(get_session))
     if item is None:
         raise HTTPException(status_code=404, detail="Media not found")
     content, content_type = await media.fetch_content(session, item)
-    return Response(content=content, media_type=content_type)
+    # Media comes from arbitrary upstream URLs; serve it as a download with
+    # nosniff so a hostile text/html payload can't run as script on the
+    # dashboard origin. <img>/<video> still render it inline in the UI.
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{media_sid}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 class OptOutUpdate(BaseModel):
@@ -586,8 +596,14 @@ async def update_optout(payload: OptOutUpdate, session: Session = Depends(get_se
     }
 
 
+# Never returned in cleartext by GET /api/settings; a companion "<field>_set"
+# boolean tells the UI whether a value exists. PUT skips these when blank so
+# the round-trip can't wipe a secret it was never shown.
+SECRET_FIELDS = ("auth_token", "api_key_secret", "real_auth_token")
+
+
 def settings_to_json(settings) -> dict:
-    return {
+    payload = {
         "inbound_webhook_url": settings.inbound_webhook_url,
         "inbound_webhook_method": settings.inbound_webhook_method,
         "account_sid": settings.account_sid,
@@ -622,6 +638,10 @@ def settings_to_json(settings) -> dict:
         "auto_forward_to": settings.auto_forward_to,
         "capture_webhook_url": settings.capture_webhook_url,
     }
+    for field in SECRET_FIELDS:
+        payload[f"{field}_set"] = bool(payload.get(field))
+        payload[field] = ""
+    return payload
 
 
 class ForcedRule(BaseModel):
@@ -676,6 +696,8 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
     settings = get_settings(session)
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
+        if key in SECRET_FIELDS and not value:
+            continue  # blank secret means "keep the existing value"
         if key in (
             "forced_rules",
             "optout_config",

@@ -67,6 +67,7 @@ Auto-tagging rules live in settings (`auto_tag_rules`).
 and `webhook.delivered`. The dashboard uses these to invalidate its query cache; anything else
 (a test waiting for a message, a custom notifier) can subscribe the same way.
 
-## Health
+## Health & version
 
-`GET /api/health` — `{"status": "ok"}`, never gated by the dashboard token.
+`GET /api/health` — `{"status": "ok"}`, and `GET /api/version` — `{"version": "…"}`. Neither is
+ever gated by the dashboard token, so probes and the version banner always work.

@@ -1,7 +1,10 @@
 [project]
 name = "smspit-backend"
-version = "0.1.0"
+# Cosmetic: the running app reports the SMSPIT_VERSION env (stamped from the
+# git tag at image build time), not this number.
+version = "0.3.0"
 description = "smspit — Twilio-emulating SMS mock service backend"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

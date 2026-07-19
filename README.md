@@ -131,7 +131,11 @@ The container is configured with a handful of environment variables:
 | `SMSPIT_PORT` | `8025` | Port to listen on |
 | `SMSPIT_DB_PATH` | `/data/smspit.db` | SQLite database (mount `/data` to persist) |
 | `SMSPIT_STATIC_DIR` | `/app/static` | Built dashboard location (only relevant running from source) |
-| `SMSPIT_DASHBOARD_TOKEN` | unset | When set, the dashboard and internal API require this token; Twilio routes and `/api/health` stay open |
+| `SMSPIT_DASHBOARD_TOKEN` | unset | When set, the dashboard and internal API require this token; Twilio routes, `/api/health`, and `/api/version` stay open |
+| `SMSPIT_ALLOW_PRIVATE_MEDIA` | unset | Allow fetching media URLs on private/loopback addresses (off by default for SSRF safety; enable for local dev) |
+| `SMSPIT_VERSION` | `dev` | Version shown in the dashboard (stamped at image build time) |
+
+A `.env` file in the working directory is loaded automatically (see [`.env.example`](.env.example)).
 
 Behavior — webhooks, delivery simulation, strict mode, opt-outs, retention, chaos testing —
 is configured at runtime on the Settings page or via `PUT /api/settings`. Notably, **strict
@@ -146,7 +150,9 @@ integration environments can exercise the full Twilio flow without real credenti
 
 1. Deploy the container behind your TLS-terminating ingress and point the UAT app's
    `TWILIO_API_BASE_URL` at it.
-2. Set `SMSPIT_DASHBOARD_TOKEN` so only the team can open the dashboard.
+2. Set `SMSPIT_DASHBOARD_TOKEN` so only the team can open the dashboard. Real Twilio credentials
+   (for the release feature) are never returned by the API, and the SSRF guard on media fetches
+   is on by default — see [SECURITY.md](SECURITY.md).
 3. Set `public_base_url` in settings so MMS media links in webhooks resolve publicly.
 4. Mount `/data` on a persistent volume, and consider the retention settings.
 
@@ -162,8 +168,9 @@ just test      # pytest + vitest
 just lint      # ruff + oxlint
 ```
 
-Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), Node 22+,
-and [caddy](https://caddyserver.com/docs/install); only Docker for `just up`.
+Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), Node 22+ with
+[pnpm](https://pnpm.io/) (`corepack enable`), and [caddy](https://caddyserver.com/docs/install);
+only Docker for `just up`.
 
 CI ([ci.yml](.github/workflows/ci.yml)) runs lints, tests, dependency audits, the SDK
 conformance suites, and a Playwright E2E pass, then publishes a multi-arch image to GHCR.

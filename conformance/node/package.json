@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Runs the real twilio-node SDK against a live smspit instance",
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "test": "node --test"
   },

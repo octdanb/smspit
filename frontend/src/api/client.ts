@@ -90,6 +90,14 @@ export function fetchHealth(): Promise<Health> {
   return request<Health>("/api/health");
 }
 
+export interface Version {
+  version: string;
+}
+
+export function fetchVersion(): Promise<Version> {
+  return request<Version>("/api/version");
+}
+
 export function fetchNumbers(q = ""): Promise<NumberSummary[]> {
   const suffix = q ? `?q=${encodeURIComponent(q)}` : "";
   return request<NumberSummary[]>(`/api/numbers${suffix}`);
@@ -138,6 +146,9 @@ export interface SettingsData {
   inbound_webhook_method: string;
   account_sid: string;
   auth_token: string;
+  // Secrets are write-only: GET returns "" plus a "<field>_set" flag.
+  auth_token_set: boolean;
+  real_auth_token_set: boolean;
   simulate_delivery: boolean;
   status_delay_ms: number;
   failure_rate: number;

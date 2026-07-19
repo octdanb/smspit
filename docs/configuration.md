@@ -15,9 +15,11 @@ These are all the variables the Docker image reads:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SMSPIT_PORT` | `8025` | Port the server listens on. The published image already exposes and binds 8025, so with Docker you'd normally remap with `-p` instead of changing this. |
-| `SMSPIT_DB_PATH` | `./data/smspit.db` (image: `/data/smspit.db`) | SQLite database file. Mount its directory as a volume to keep messages across restarts. |
+| `SMSPIT_DB_PATH` | `./data/smspit.db` (image: `/data/smspit.db`) | SQLite database file. Mount its directory as a volume to keep messages across restarts. Runs in WAL mode; the schema migrates additively on startup, so upgrading against an existing volume is safe. |
 | `SMSPIT_STATIC_DIR` | `./static` (image: `/app/static`) | Directory containing the built dashboard. Baked into the image — only relevant when running from source. |
-| `SMSPIT_DASHBOARD_TOKEN` | *(unset — no auth)* | When set, the dashboard and the internal `/api` require this token: send an `X-Smspit-Token` header, or open `http://host:8025/?token=…` once and the dashboard remembers it. Twilio-shaped routes and `/api/health` are never gated, so the app under test and health probes keep working. |
+| `SMSPIT_DASHBOARD_TOKEN` | *(unset — no auth)* | When set, the dashboard and the internal `/api` require this token: send an `X-Smspit-Token` header, or open `http://host:8025/?token=…` once and the dashboard remembers it. Twilio-shaped routes, `/api/health`, and `/api/version` are never gated, so the app under test and health probes keep working. |
+| `SMSPIT_ALLOW_PRIVATE_MEDIA` | *(unset — blocked)* | By default the server refuses to fetch `MediaUrl`s that resolve to private / loopback / link-local addresses (SSRF protection for shared instances). Set to `1`/`true` only for single-machine local dev that serves media from `localhost`. |
+| `SMSPIT_VERSION` | `dev` | Version string shown in the dashboard header and returned by `GET /api/version`. Stamped from the git tag at image build time. |
 
 Example:
 
@@ -28,6 +30,9 @@ docker run -p 8025:8025 \
   ghcr.io/octdanb/octavenz-smspit:latest
 ```
 
+For local dev and `docker compose`, a `.env` file in the working directory is loaded
+automatically (real environment variables always take precedence). See [`.env.example`](../.env.example).
+
 Everything else below lives in settings, not the environment — it can be changed at runtime
 without a restart.
 
@@ -35,6 +40,11 @@ without a restart.
 
 Fields documented as JSON take a JSON value (the dashboard's Settings page edits them as text).
 Unlisted keys sent to `PUT /api/settings` are rejected, so typos fail loudly.
+
+Secret fields (`auth_token`, `api_key_secret`, `real_auth_token`) are **write-only**: `GET /api/settings`
+returns them as `""` plus a companion `<field>_set` boolean, and a blank value on `PUT` leaves the
+stored secret unchanged (so the dashboard round-trip can't wipe a secret it was never shown). Send a
+non-empty value to change one.
 
 ### Identity & inbound webhook
 

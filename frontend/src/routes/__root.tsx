@@ -18,7 +18,12 @@ import {
   Webhook,
 } from "lucide-react";
 
-import { fetchNumbers, setDashboardToken } from "@/api/client";
+import {
+  fetchNumbers,
+  fetchVersion,
+  setDashboardToken,
+  UnauthorizedError,
+} from "@/api/client";
 import { useLiveUpdates, type LiveStatus } from "@/api/ws";
 import { NumberSidebar } from "@/components/number-sidebar";
 import { Button } from "@/components/ui/button";
@@ -95,7 +100,13 @@ function RootLayout() {
     queryFn: () => fetchNumbers(),
     retry: false,
   });
-  if (probe.isError && probe.error.name === "UnauthorizedError") {
+  const version = useQuery({
+    queryKey: ["version"],
+    queryFn: fetchVersion,
+    staleTime: Infinity,
+  });
+
+  if (probe.isError && probe.error instanceof UnauthorizedError) {
     return (
       <TokenGate
         onSubmit={(token) => {
@@ -116,6 +127,14 @@ function RootLayout() {
         <span className="hidden text-sm text-muted-foreground lg:inline">
           Twilio-compatible SMS mock
         </span>
+        {version.data && version.data.version !== "dev" && (
+          <span
+            title="smspit version"
+            className="hidden rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground sm:inline"
+          >
+            v{version.data.version}
+          </span>
+        )}
         <nav className="ml-auto flex items-center gap-1">
           <Link
             to="/scheduled"
