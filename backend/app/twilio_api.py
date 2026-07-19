@@ -247,9 +247,7 @@ async def create_message(
         # A Messaging Service send has no From yet (the pool picks one later), so
         # fall back to "opted out from any sender" — Twilio still returns 21610.
         opted = (
-            optout.is_opted_out(session, to, from_)
-            if from_
-            else optout.has_any_optout(session, to)
+            optout.is_opted_out(session, to, from_) if from_ else optout.has_any_optout(session, to)
         )
         if opted:
             raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
