@@ -86,6 +86,43 @@ class Settings(SQLModel, table=True):
     optout_config: str = Field(default_factory=lambda: json.dumps(DEFAULT_OPTOUT_CONFIG))
     # JSON dict of geo params merged into inbound webhooks (FromCity, FromCountry, ...)
     webhook_geo_params: str = "{}"
+    # Verify v2 (phase 6): how long a verification code stays valid.
+    verify_ttl_seconds: int = 600
+
+
+class VerifyService(SQLModel, table=True):
+    """Twilio Verify v2 Service (VA…)."""
+
+    sid: str = Field(primary_key=True)
+    account_sid: str
+    friendly_name: str
+    code_length: int = 6
+    custom_code_enabled: bool = False
+    lookup_enabled: bool = False
+    skip_sms_to_landlines: bool = False
+    dtmf_input_required: bool = False
+    tts_name: str | None = None
+    psd2_enabled: bool = False
+    do_not_share_warning_enabled: bool = False
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
+
+
+class Verification(SQLModel, table=True):
+    """An in-flight Verify v2 verification (VE…)."""
+
+    sid: str = Field(primary_key=True)
+    service_sid: str = Field(index=True)
+    account_sid: str
+    to: str = Field(index=True)
+    channel: str = "sms"
+    code: str
+    status: str = "pending"  # pending | approved | canceled | max_attempts_reached | expired
+    check_attempts: int = 0
+    send_attempts: str = "[]"  # JSON list of {attempt_sid, channel, time}
+    expires_at: datetime
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
 
 
 class MediaItem(SQLModel, table=True):

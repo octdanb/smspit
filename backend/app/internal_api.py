@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlmodel import Session, col, delete, func, or_, select
 
-from . import inbound, media, optout, webhooks
+from . import inbound, media, optout, otp, webhooks
 from .db import get_session, get_settings
-from .models import MediaItem, Message, OptOut, WebhookDelivery
+from .models import MediaItem, Message, OptOut, Verification, VerifyService, WebhookDelivery, utcnow
 from .ws import manager
 
 router = APIRouter(prefix="/api")
@@ -114,6 +114,63 @@ def thread_messages(
     }
 
 
+@router.get("/numbers/{number}/latest-code")
+def latest_code(
+    number: str,
+    session: Session = Depends(get_session),
+    regex: str | None = Query(None),
+) -> dict:
+    """Most recent OTP code sent TO this number — for E2E test automation."""
+    messages = session.exec(
+        select(Message)
+        .where(Message.to_number == number)
+        .order_by(col(Message.date_created).desc(), col(Message.id).desc())
+        .limit(100)
+    ).all()
+    for message in messages:
+        try:
+            code = otp.extract_code(message.body, regex)
+        except Exception as exc:  # invalid user-supplied regex
+            raise HTTPException(status_code=400, detail=f"Invalid regex: {exc}") from exc
+        if code:
+            age = int((utcnow() - message.date_created).total_seconds())
+            return {
+                "code": code,
+                "message_sid": message.sid,
+                "body": message.body,
+                "date_created": iso(message.date_created),
+                "age_seconds": age,
+            }
+    raise HTTPException(status_code=404, detail=f"No verification code found for {number}")
+
+
+@router.get("/numbers/{number}/verifications")
+def number_verifications(number: str, session: Session = Depends(get_session)) -> list[dict]:
+    """Verify v2 verifications for a number (newest first), with expected codes."""
+    verifications = session.exec(
+        select(Verification)
+        .where(Verification.to == number)
+        .order_by(col(Verification.date_created).desc())
+        .limit(20)
+    ).all()
+    services = {s.sid: s.friendly_name for s in session.exec(select(VerifyService)).all()}
+    now = utcnow()
+    return [
+        {
+            "sid": v.sid,
+            "service_sid": v.service_sid,
+            "service_name": services.get(v.service_sid, "?"),
+            "status": v.status,
+            "code": v.code,
+            "check_attempts": v.check_attempts,
+            "send_attempts": len(json.loads(v.send_attempts or "[]")),
+            "expires_in_seconds": max(int((v.expires_at - now).total_seconds()), 0),
+            "date_created": iso(v.date_created),
+        }
+        for v in verifications
+    ]
+
+
 class ReplyPayload(BaseModel):
     body: str
     to: str | None = None
@@ -192,6 +249,7 @@ def settings_to_json(settings) -> dict:
         "enforce_optouts": settings.enforce_optouts,
         "optout_config": json.loads(settings.optout_config or "{}"),
         "webhook_geo_params": json.loads(settings.webhook_geo_params or "{}"),
+        "verify_ttl_seconds": settings.verify_ttl_seconds,
     }
 
 
@@ -214,6 +272,7 @@ class SettingsUpdate(BaseModel):
     enforce_optouts: bool | None = None
     optout_config: dict | None = None
     webhook_geo_params: dict[str, str] | None = None
+    verify_ttl_seconds: int | None = None
 
 
 @router.get("/settings")

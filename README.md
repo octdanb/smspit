@@ -34,13 +34,29 @@ Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/)
 [caddy](https://caddyserver.com/docs/install) (`apt install caddy` / `brew install caddy`) for
 local development; only Docker for `just up`.
 
+## CI & Releases
+
+GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs ruff + pytest, oxlint + vitest + the
+frontend build on every PR, then builds the Docker image. On pushes to `main` the image is
+published to GHCR as `ghcr.io/<owner>/octavenz-smspit:latest` (+ a `sha-…` tag).
+
+Releases are semver git tags: pushing `v1.2.3` publishes the image tagged `1.2.3`, `1.2`, and
+`1`:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+docker run -p 8025:8025 -v ./data:/data ghcr.io/<owner>/octavenz-smspit:0.1.0
+```
+
 ## Status
 
 Phases 1–5 complete: message capture (send/list/fetch with Twilio-shaped resources, pagination,
 segment math), live dashboard updates over WebSocket, delivery lifecycle simulation
 (queued → sending → sent → delivered, configurable delays/failures), status callbacks signed
 with X-Twilio-Signature, webhook delivery log with retry, message update (redact/cancel) and
-delete, scheduled sends, and two-way messaging: dashboard replies delivered to your app as
-Twilio-format inbound webhooks, TwiML `<Response><Message>` auto-replies, the STOP/START/HELP
-opt-out engine (with optional 21610 enforcement), and the MMS Media subresource. Next per
-[SPEC.md §12](SPEC.md#12-build-phases): verification/OTP support, Messaging Services, Lookup.
+delete, scheduled sends, two-way messaging (inbound webhooks, TwiML auto-replies, the
+STOP/START/HELP opt-out engine, MMS media), and verification support: OTP extraction with
+`GET /api/numbers/{number}/latest-code` for E2E tests, Twilio Verify v2 emulation
+(Services / Verifications / VerificationCheck with attempt limits and expiry), and code
+highlight/copy in the dashboard. Next per [SPEC.md §12](SPEC.md#12-build-phases): Messaging
+Services v1 and Lookup v2, then polish.

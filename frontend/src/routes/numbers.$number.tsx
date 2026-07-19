@@ -3,9 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Ban, Trash2 } from "lucide-react";
 
-import { clearThread, fetchThread, setOptOut } from "@/api/client";
+import {
+  clearThread,
+  fetchLatestCode,
+  fetchThread,
+  setOptOut,
+} from "@/api/client";
+import { CopyChip } from "@/components/copy-chip";
 import { MessageBubble } from "@/components/message-bubble";
 import { ReplyBox } from "@/components/reply-box";
+import { VerificationsPanel } from "@/components/verifications-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -31,6 +38,11 @@ function ThreadView() {
       queryClient.invalidateQueries({ queryKey: ["thread", number] });
       navigate({ to: "/" });
     },
+  });
+
+  const latestCode = useQuery({
+    queryKey: ["latest-code", number],
+    queryFn: () => fetchLatestCode(number),
   });
 
   const optedOut = thread.data?.opted_out ?? false;
@@ -61,6 +73,9 @@ function ThreadView() {
             )}
           </div>
           {optedOut && <Badge variant="destructive">opted out</Badge>}
+          {latestCode.data && (
+            <CopyChip value={latestCode.data.code} label="latest code" />
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -88,6 +103,7 @@ function ThreadView() {
           </Button>
         </div>
       </header>
+      <VerificationsPanel number={number} />
       <div
         ref={scroller}
         className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"

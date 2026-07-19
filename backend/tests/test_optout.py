@@ -155,11 +155,14 @@ def test_wildcard_opt_in_clears_stop_created_pairs(client):
     client.put("/api/optouts", json={"recipient": USER, "opted_out": False})
 
     assert all(not p["opted_out"] for p in client.get("/api/optouts").json())
-    assert client.post(
-        MESSAGES_URL,
-        data={"To": USER, "From": APP, "Body": "welcome back"},
-        auth=AUTH,
-    ).status_code == 201
+    assert (
+        client.post(
+            MESSAGES_URL,
+            data={"To": USER, "From": APP, "Body": "welcome back"},
+            auth=AUTH,
+        ).status_code
+        == 201
+    )
 
 
 def test_custom_keywords_and_confirmations(client):

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import internal_api, twilio_api, ws
+from . import internal_api, twilio_api, verify_v2, ws
 from .config import config
 from .db import init_db
 from .errors import TwilioError, twilio_error_handler
@@ -22,6 +22,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="smspit", lifespan=lifespan)
     app.add_exception_handler(TwilioError, twilio_error_handler)
     app.include_router(twilio_api.router)
+    app.include_router(verify_v2.router)
     app.include_router(internal_api.router)
     app.include_router(ws.router)
 

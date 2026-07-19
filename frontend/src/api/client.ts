@@ -170,6 +170,45 @@ export function sendReply(
   );
 }
 
+export interface LatestCode {
+  code: string;
+  message_sid: string;
+  body: string;
+  date_created: string;
+  age_seconds: number;
+}
+
+export async function fetchLatestCode(
+  number: string,
+): Promise<LatestCode | null> {
+  const response = await fetch(
+    `/api/numbers/${encodeURIComponent(number)}/latest-code`,
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`latest-code failed: ${response.status}`);
+  return response.json() as Promise<LatestCode>;
+}
+
+export interface VerificationInfo {
+  sid: string;
+  service_sid: string;
+  service_name: string;
+  status: string;
+  code: string;
+  check_attempts: number;
+  send_attempts: number;
+  expires_in_seconds: number;
+  date_created: string;
+}
+
+export function fetchVerifications(
+  number: string,
+): Promise<VerificationInfo[]> {
+  return request<VerificationInfo[]>(
+    `/api/numbers/${encodeURIComponent(number)}/verifications`,
+  );
+}
+
 export function setOptOut(recipient: string, optedOut: boolean): Promise<void> {
   return request<void>("/api/optouts", {
     method: "PUT",

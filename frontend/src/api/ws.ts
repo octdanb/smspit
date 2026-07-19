@@ -19,6 +19,13 @@ export function handleWsEvent(queryClient: QueryClient, event: WsEvent): void {
       queryClient.invalidateQueries({ queryKey: ["numbers"] });
       if (number) {
         queryClient.invalidateQueries({ queryKey: ["thread", number] });
+        queryClient.invalidateQueries({ queryKey: ["latest-code", number] });
+      }
+      break;
+    case "verification.created":
+    case "verification.updated":
+      if (number) {
+        queryClient.invalidateQueries({ queryKey: ["verifications", number] });
       }
       break;
     case "messages.cleared":

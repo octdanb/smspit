@@ -1,10 +1,13 @@
 import type { ThreadMessage } from "@/api/client";
+import { CopyChip } from "@/components/copy-chip";
 import { Badge } from "@/components/ui/badge";
 import { messageTime } from "@/lib/format";
+import { extractCode } from "@/lib/otp";
 import { cn } from "@/lib/utils";
 
 export function MessageBubble({ message }: { message: ThreadMessage }) {
   const outbound = message.direction.startsWith("outbound");
+  const code = outbound ? extractCode(message.body) : null;
 
   return (
     <div
@@ -49,6 +52,7 @@ export function MessageBubble({ message }: { message: ThreadMessage }) {
         {message.body || (message.media.length === 0 && <em>(no body)</em>)}
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {code && <CopyChip value={code} label="code" />}
         <span>{messageTime(message.date_created)}</span>
         <Badge variant="outline">{message.status}</Badge>
         {message.num_segments > 1 && (
