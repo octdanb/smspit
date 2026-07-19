@@ -1,0 +1,7 @@
+services:
+  smspit:
+    build: .
+    ports:
+      - "8025:8025"
+    volumes:
+      - ./data:/data
