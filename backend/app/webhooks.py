@@ -4,7 +4,9 @@ Every attempt is signed with X-Twilio-Signature and recorded in the
 WebhookDelivery log, success or failure.
 """
 
+import asyncio
 import json
+import random
 import time
 from datetime import UTC, datetime
 from urllib.parse import urlencode
@@ -56,29 +58,70 @@ async def deliver(
 
     Signature rules match Twilio: POST signs url + sorted key/value pairs;
     GET signs the full URL including the query string, with nothing appended.
+    Chaos settings apply: artificial latency, injected failures, and retries
+    after failed deliveries (each retry logged as its own attempt).
     """
     with Session(get_engine()) as session:
-        auth_token = get_settings(session).auth_token
+        settings = get_settings(session)
+        auth_token = settings.auth_token
+        latency = settings.webhook_latency_ms / 1000
+        failure_rate = settings.webhook_failure_rate
+        retries = settings.webhook_retry_count
 
+    delivery = await _attempt(
+        kind, url, params, message_sid, method, auth_token, latency, failure_rate
+    )
+    attempt = 0
+    while attempt < retries and _failed(delivery):
+        attempt += 1
+        await asyncio.sleep(min(0.2 * attempt, 2.0))
+        delivery = await _attempt(
+            kind, url, params, message_sid, method, auth_token, latency, failure_rate
+        )
+    return delivery
+
+
+def _failed(delivery: WebhookDelivery) -> bool:
+    return delivery.error is not None or not (
+        delivery.response_status is not None and 200 <= delivery.response_status < 300
+    )
+
+
+async def _attempt(
+    kind: str,
+    url: str,
+    params: dict[str, str],
+    message_sid: str | None,
+    method: str,
+    auth_token: str,
+    latency: float,
+    failure_rate: float,
+) -> WebhookDelivery:
     method = (method or "POST").upper()
+    if latency > 0:
+        await asyncio.sleep(latency)
+
     started = time.monotonic()
     response_status: int | None = None
     response_body: str | None = None
     error: str | None = None
-    try:
-        async with httpx.AsyncClient(transport=_transport, timeout=10) as client:
-            if method == "GET":
-                joiner = "&" if "?" in url else "?"
-                full_url = url + joiner + urlencode(params)
-                headers = {"X-Twilio-Signature": compute_signature(auth_token, full_url, {})}
-                response = await client.get(full_url, headers=headers)
-            else:
-                headers = {"X-Twilio-Signature": compute_signature(auth_token, url, params)}
-                response = await client.post(url, data=params, headers=headers)
-        response_status = response.status_code
-        response_body = response.text[:RESPONSE_BODY_LIMIT]
-    except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"
+    if failure_rate > 0 and random.random() < failure_rate:
+        error = "ChaosError: delivery dropped by webhook_failure_rate"
+    else:
+        try:
+            async with httpx.AsyncClient(transport=_transport, timeout=10) as client:
+                if method == "GET":
+                    joiner = "&" if "?" in url else "?"
+                    full_url = url + joiner + urlencode(params)
+                    headers = {"X-Twilio-Signature": compute_signature(auth_token, full_url, {})}
+                    response = await client.get(full_url, headers=headers)
+                else:
+                    headers = {"X-Twilio-Signature": compute_signature(auth_token, url, params)}
+                    response = await client.post(url, data=params, headers=headers)
+            response_status = response.status_code
+            response_body = response.text[:RESPONSE_BODY_LIMIT]
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
 
     delivery = WebhookDelivery(
         kind=kind,

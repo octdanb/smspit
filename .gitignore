@@ -9,9 +9,16 @@ __pycache__/
 node_modules/
 frontend/dist/
 
+# Test harnesses
+e2e/test-results/
+e2e/playwright-report/
+conformance/node/package-lock.json
+e2e/package-lock.json
+
 # Runtime data
 data/
 *.db
 
 # Misc
 .DS_Store
+conformance/python/uv.lock

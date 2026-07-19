@@ -125,6 +125,14 @@ Deterministic failure testing: `PUT /api/settings` with
 `{"forced_rules": [{"to_suffix": "0000", "status": "undelivered", "error_code": 30007}]}` makes
 every send to a number ending `0000` fail with error 30007 — status callbacks included.
 
+**Fixtures**: `POST /api/seed` loads demo conversations (or pass
+`{"messages": [{from_number, to_number, body, direction?, tags?}]}` for custom fixtures) —
+handy for screenshots and demo environments.
+
+**Webhook chaos** (settings): `webhook_latency_ms` delays every delivery,
+`webhook_failure_rate` drops a fraction of them, and `webhook_retry_count` retries failed
+deliveries with backoff (each attempt logged) — for testing your app's webhook resilience.
+
 ## Strict mode
 
 Permissive by default (any credentials, any numbers). Opt into Twilio-grade behavior per check
@@ -156,9 +164,18 @@ local development; only Docker for `just up`.
 
 ## CI & Releases
 
-GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs ruff + pytest, oxlint + vitest + the
-frontend build on every PR, then builds the Docker image. On pushes to `main` the image is
-published to GHCR as `ghcr.io/<owner>/octavenz-smspit:latest` (+ a `sha-…` tag).
+GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs on every PR:
+
+- backend: ruff, pytest, and a `pip-audit` dependency audit
+- frontend: oxlint, prettier check, vitest, build, and `npm audit` (high severity fails)
+- **SDK conformance**: the real `twilio-python` and `twilio-node` SDKs run against a live
+  instance ([conformance/](conformance/)) — send, pagination, media, Verify, Messaging
+  Services, Lookup, error codes
+- **Dashboard E2E**: a Playwright suite ([e2e/](e2e/)) drives the built dashboard — live
+  updates, replies + TwiML auto-replies, OTP chips, tag filtering, the detail drawer
+
+Then the Docker image builds (multi-arch `linux/amd64` + `linux/arm64` on pushes). On `main`
+the image is published to GHCR as `ghcr.io/<owner>/octavenz-smspit:latest` (+ a `sha-…` tag).
 
 Releases are semver git tags: pushing `v1.2.3` publishes the image tagged `1.2.3`, `1.2`, and
 `1`:
@@ -184,10 +201,7 @@ git tag v0.1.0 && git push origin v0.1.0
 
 ## Roadmap
 
-Phases 1–10 of [SPEC.md](SPEC.md#12-build-phases) are shipped. Remaining
-([SPEC.md §12](SPEC.md#12-build-phases), phase 11): conformance hardening — real
-twilio-python/twilio-node SDK tests in CI, a Playwright E2E suite, multi-arch images, a seed
-API, and webhook chaos options.
+All 11 phases of [SPEC.md §12](SPEC.md#12-build-phases) are shipped.
 
 ## Non-goals
 

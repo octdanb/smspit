@@ -105,6 +105,10 @@ class Settings(SQLModel, table=True):
     auto_tag_rules: str = "[]"
     retention_max_age_hours: int = 0  # 0 = keep forever
     retention_max_messages: int = 0  # 0 = unlimited
+    # Phase 11: webhook chaos — test app-side resilience.
+    webhook_latency_ms: int = 0  # artificial delay before every delivery
+    webhook_failure_rate: float = 0.0  # 0..1 chance a delivery is dropped (logged as error)
+    webhook_retry_count: int = 0  # retries after a failed delivery (error or 5xx)
 
 
 class MessageTag(SQLModel, table=True):
