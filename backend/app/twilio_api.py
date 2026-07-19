@@ -17,7 +17,7 @@ from . import lifecycle, media, optout
 from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
-from .models import MediaItem, Message, MessagingService, utcnow
+from .models import IncomingPhoneNumber, MediaItem, Message, MessagingService, utcnow
 from .segments import segment_count
 from .ws import manager
 
@@ -38,10 +38,17 @@ def require_basic_auth(
     if credentials is None or not credentials.username:
         raise auth_error()
     settings = get_settings(session)
-    if settings.strict_auth and not (
-        credentials.username == settings.account_sid and credentials.password == settings.auth_token
-    ):
-        raise TwilioError(20003, "Authentication Error - invalid credentials", 401)
+    if settings.strict_auth:
+        account_ok = (
+            credentials.username == settings.account_sid
+            and credentials.password == settings.auth_token
+        )
+        api_key_ok = bool(settings.api_key_sid) and (
+            credentials.username == settings.api_key_sid
+            and credentials.password == settings.api_key_secret
+        )
+        if not (account_ok or api_key_ok):
+            raise TwilioError(20003, "Authentication Error - invalid credentials", 401)
     return credentials
 
 
@@ -113,6 +120,16 @@ def is_valid_sender(sender: str) -> bool:
     return is_valid_e164(bare) or bool(SHORT_CODE.match(bare)) or bool(ALPHA_SENDER.match(bare))
 
 
+def _number_status_callback(session: Session, from_: str) -> str | None:
+    """Callback precedence tail: the sending number's configured StatusCallback."""
+    if not from_:
+        return None
+    number = session.exec(
+        select(IncomingPhoneNumber).where(IncomingPhoneNumber.phone_number == from_)
+    ).first()
+    return number.status_callback if number is not None else None
+
+
 def parse_filter_dt(value: str) -> datetime:
     """Parse a DateSent filter (YYYY-MM-DD or ISO 8601) to naive UTC."""
     try:
@@ -152,8 +169,18 @@ async def create_message(
         if service is None:
             raise TwilioError(21701, "The Messaging Service was not found.", http_status=404)
 
-    if not body and not media_urls and not single.get("ContentSid"):
+    content_sid = single.get("ContentSid", "").strip() or None
+    if not body and not media_urls and not content_sid:
         raise TwilioError(21602, "Message body or media urls are required.")
+    if not body and content_sid:
+        # No template store in the mock: render the variables as plain text so
+        # the message is inspectable in the dashboard and by latest-code.
+        try:
+            variables = json.loads(single.get("ContentVariables") or "{}")
+        except ValueError:
+            variables = {}
+        rendered = ", ".join(f"{key}: {value}" for key, value in variables.items())
+        body = f"[{content_sid}]" + (f" {rendered}" if rendered else "")
     if len(body) > 1600:
         raise TwilioError(21617, "The concatenated message body exceeds the 1600 character limit.")
 
@@ -166,6 +193,25 @@ async def create_message(
         line_types = json.loads(settings.lookup_line_types or "{}")
         if line_types.get(_strip_channel(to)) == "landline":
             raise TwilioError(21614, f"'To' number {to} is not a valid mobile number.")
+        if to.startswith("whatsapp:") and not content_sid:
+            # WhatsApp 24h session window: free-form sends need a recent
+            # inbound message from this user; template sends always pass.
+            window_start = utcnow() - timedelta(hours=24)
+            recent_inbound = session.exec(
+                select(Message)
+                .where(
+                    Message.direction == "inbound",
+                    Message.from_number == to,
+                    col(Message.date_created) >= window_start,
+                )
+                .limit(1)
+            ).first()
+            if recent_inbound is None:
+                raise TwilioError(
+                    63016,
+                    "Failed to send freeform message because you are outside the allowed "
+                    "window. Please use a Message Template (ContentSid).",
+                )
     if settings.trial_mode:
         verified = json.loads(settings.verified_numbers or "[]")
         if to not in verified:
@@ -228,7 +274,8 @@ async def create_message(
             or (service.validity_period if service is not None else 36000)
         ),
         status_callback_url=single.get("StatusCallback")
-        or (service.status_callback if service is not None else None),
+        or (service.status_callback if service is not None else None)
+        or _number_status_callback(session, from_),
         provide_feedback=parse_bool(single.get("ProvideFeedback")),
         raw_params=json.dumps(
             {key: values if len(values) > 1 else values[0] for key, values in params.items()}
@@ -400,6 +447,43 @@ async def delete_message(
     await manager.broadcast("messages.cleared", {"number": number})
 
 
+@router.post("/2010-04-01/Accounts/{account_sid}/Messages/{sid}/Feedback.json", status_code=201)
+async def create_feedback(
+    account_sid: str,
+    sid: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    _auth: HTTPBasicCredentials = Depends(require_basic_auth),
+) -> dict:
+    """Message Feedback: only for messages sent with ProvideFeedback=true."""
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise not_found(f"2010-04-01/Accounts/{account_sid}/Messages/{sid}/Feedback.json")
+    if not message.provide_feedback:
+        raise TwilioError(
+            20001, "Feedback is only available for messages sent with ProvideFeedback=true."
+        )
+    form = await request.form()
+    outcome = str(form.get("Outcome") or "confirmed")
+    if outcome not in ("confirmed", "unconfirmed"):
+        raise TwilioError(20001, "Outcome must be 'confirmed' or 'unconfirmed'.")
+
+    message.feedback_outcome = outcome
+    message.date_updated = utcnow()
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    now = rfc2822(utcnow())
+    return {
+        "account_sid": message.account_sid,
+        "message_sid": message.sid,
+        "outcome": outcome,
+        "date_created": now,
+        "date_updated": now,
+        "uri": f"/2010-04-01/Accounts/{message.account_sid}/Messages/{message.sid}/Feedback.json",
+    }
+
+
 def media_to_json(item: MediaItem) -> dict:
     base = f"/2010-04-01/Accounts/{item.account_sid}/Messages/{item.message_sid}/Media/{item.sid}"
     return {
@@ -421,18 +505,35 @@ def list_media(
     session: Session = Depends(get_session),
     _auth: HTTPBasicCredentials = Depends(require_basic_auth),
 ) -> dict:
+    query = request.query_params
     items = media.media_for_message(session, message_sid)
+    if query.get("DateCreated"):
+        day = parse_filter_dt(query["DateCreated"])
+        items = [i for i in items if day <= i.date_created < day + timedelta(days=1)]
+    if query.get("DateCreated<"):
+        limit_dt = parse_filter_dt(query["DateCreated<"])
+        items = [i for i in items if i.date_created <= limit_dt]
+    if query.get("DateCreated>"):
+        limit_dt = parse_filter_dt(query["DateCreated>"])
+        items = [i for i in items if i.date_created >= limit_dt]
+
+    page_size = min(int(query.get("PageSize") or 50), 1000)
+    page = int(query.get("Page") or 0)
+    start = page * page_size
+    chunk = items[start : start + page_size]
+    has_more = len(items) > start + page_size
+
     path = f"/2010-04-01/Accounts/{account_sid}/Messages/{message_sid}/Media.json"
     return {
-        "media_list": [media_to_json(item) for item in items],
-        "page": 0,
-        "page_size": max(len(items), 50),
-        "first_page_uri": f"{path}?PageSize=50&Page=0",
-        "previous_page_uri": None,
-        "next_page_uri": None,
+        "media_list": [media_to_json(item) for item in chunk],
+        "page": page,
+        "page_size": page_size,
+        "first_page_uri": f"{path}?PageSize={page_size}&Page=0",
+        "previous_page_uri": f"{path}?PageSize={page_size}&Page={page - 1}" if page > 0 else None,
+        "next_page_uri": f"{path}?PageSize={page_size}&Page={page + 1}" if has_more else None,
         "uri": str(request.url.path),
-        "start": 0,
-        "end": max(len(items) - 1, 0),
+        "start": start,
+        "end": start + max(len(chunk) - 1, 0),
     }
 
 

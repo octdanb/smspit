@@ -132,8 +132,8 @@ on the Settings page or via `PUT /api/settings`:
 
 | Setting | Effect |
 |---|---|
-| `strict_auth` | wrong SID/token → 401 / `20003` |
-| `strict_validation` | malformed To → `21211`, bad From → `21212`, landline (per Lookup overrides) → `21614` |
+| `strict_auth` | wrong SID/token → 401 / `20003` (API key pair accepted via `api_key_sid`/`api_key_secret`) |
+| `strict_validation` | malformed To → `21211`, bad From → `21212`, landline (per Lookup overrides) → `21614`, WhatsApp free-form outside the 24h session window → `63016` |
 | `enforce_optouts` | sends to STOPped numbers → `21610` |
 | `trial_mode` + `verified_numbers` | sends to unverified numbers → `21608` |
 | `rate_limit_per_minute` | over the limit → 429 / `20429` |

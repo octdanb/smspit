@@ -264,6 +264,8 @@ def settings_to_json(settings) -> dict:
         "verify_ttl_seconds": settings.verify_ttl_seconds,
         "lookup_line_types": json.loads(settings.lookup_line_types or "{}"),
         "strict_auth": settings.strict_auth,
+        "api_key_sid": settings.api_key_sid,
+        "api_key_secret": settings.api_key_secret,
         "strict_validation": settings.strict_validation,
         "trial_mode": settings.trial_mode,
         "verified_numbers": json.loads(settings.verified_numbers or "[]"),
@@ -293,6 +295,8 @@ class SettingsUpdate(BaseModel):
     verify_ttl_seconds: int | None = None
     lookup_line_types: dict[str, str] | None = None
     strict_auth: bool | None = None
+    api_key_sid: str | None = None
+    api_key_secret: str | None = None
     strict_validation: bool | None = None
     trial_mode: bool | None = None
     verified_numbers: list[str] | None = None
@@ -330,6 +334,7 @@ def delivery_to_json(delivery: WebhookDelivery) -> dict:
         "id": delivery.id,
         "kind": delivery.kind,
         "url": delivery.url,
+        "method": delivery.method,
         "request_params": json.loads(delivery.request_params or "{}"),
         "response_status": delivery.response_status,
         "response_body": delivery.response_body,
@@ -367,7 +372,9 @@ async def retry_webhook(delivery_id: int, session: Session = Depends(get_session
     if delivery is None:
         raise HTTPException(status_code=404, detail="Delivery not found")
     params = json.loads(delivery.request_params or "{}")
-    new_delivery = await webhooks.deliver(delivery.kind, delivery.url, params, delivery.message_sid)
+    new_delivery = await webhooks.deliver(
+        delivery.kind, delivery.url, params, delivery.message_sid, method=delivery.method
+    )
     return delivery_to_json(new_delivery)
 
 
