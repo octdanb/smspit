@@ -1,5 +1,6 @@
 """Twilio Programmable Messaging API emulation (2010-04-01): Messages resource."""
 
+import asyncio
 import json
 import re
 import secrets
@@ -13,7 +14,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, col, func, select
 
-from . import lifecycle, media, optout, tags
+from . import lifecycle, media, optout, release, tags, webhooks
 from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
@@ -287,10 +288,15 @@ async def create_message(
     media.create_media_items(session, message.sid, account_sid, media_urls)
     tags.apply_auto_tags(session, message, single)
 
-    await manager.broadcast(
-        "message.created",
-        {"number": counterparty(message), "message": message_to_internal(session, message)},
-    )
+    capture_payload = {
+        "number": counterparty(message),
+        "message": message_to_internal(session, message),
+    }
+    await manager.broadcast("message.created", capture_payload)
+    # Fire-and-forget: the send path must never block on user-facing hooks.
+    asyncio.get_running_loop().create_task(webhooks.deliver_capture(capture_payload))
+    if settings.auto_forward_to:
+        asyncio.get_running_loop().create_task(release.auto_forward(message.sid))
     if settings.simulate_delivery:
         lifecycle.start(message.sid)
     return message_to_json(message)

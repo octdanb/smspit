@@ -7,6 +7,7 @@ A reply from a number:
 4. parses a TwiML response into outbound auto-replies (following one Redirect).
 """
 
+import asyncio
 import json
 import secrets
 
@@ -59,10 +60,12 @@ async def record_message(
 
     from .internal_api import counterparty, message_to_internal
 
-    await manager.broadcast(
-        "message.created",
-        {"number": counterparty(message), "message": message_to_internal(session, message)},
-    )
+    capture_payload = {
+        "number": counterparty(message),
+        "message": message_to_internal(session, message),
+    }
+    await manager.broadcast("message.created", capture_payload)
+    asyncio.get_running_loop().create_task(webhooks.deliver_capture(capture_payload))
     return message
 
 

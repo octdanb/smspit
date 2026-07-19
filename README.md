@@ -199,10 +199,23 @@ git tag v0.2.0 && git push origin v0.2.0
 - **Optional dashboard auth**: set `SMSPIT_DASHBOARD_TOKEN` and the internal API + dashboard
   require it (`X-Smspit-Token` header, or open `http://localhost:8025/?token=…` once); Twilio
   routes and `/api/health` are unaffected.
+- **Release to real Twilio** (Mailpit's relay analog): configure real credentials + a recipient
+  **allowlist** in settings, then release any captured message from the detail drawer or
+  `POST /api/messages/{sid}/release` — or auto-forward everything to a tester's phone. Nothing
+  is ever sent to a number that isn't explicitly allowlisted.
+- **Search operators**: `tag:` `from:` `to:` `status:` `has:media` `is:unread`
+  `before:`/`after:YYYY-MM-DD`, combinable with free text.
+- **Capture webhook**: `capture_webhook_url` gets a JSON POST for every captured message
+  (fire-and-forget) — point CI or a Slack bridge at it.
+- **Desktop notifications** (bell toggle) when new messages arrive while the tab is hidden, and
+  an **encoding check** in the detail drawer showing exactly which characters force UCS-2 and
+  what Smart Encoding would save.
 
 ## Roadmap
 
-All 11 phases of [SPEC.md §12](SPEC.md#12-build-phases) are shipped.
+All 12 phases of [SPEC.md §12](SPEC.md#12-build-phases) are shipped, including the Mailpit
+feature-parity pass (release/forwarding, search operators, capture webhook, notifications,
+encoding check).
 
 ## Non-goals
 

@@ -269,6 +269,90 @@ function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Release & forwarding (real Twilio)</CardTitle>
+          <CardDescription>
+            Re-send captured messages through your real Twilio account —
+            Mailpit's relay analog. Releases only ever go to numbers on the
+            allowlist. A capture webhook can also notify CI of every captured
+            message.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            <label className="grid gap-1.5 text-sm">
+              Real Account SID
+              <Input
+                placeholder="ACxxxxxxxx…"
+                value={draft.real_account_sid ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, real_account_sid: e.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              Real auth token
+              <Input
+                type="password"
+                value={draft.real_auth_token ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, real_auth_token: e.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              Real From number
+              <Input
+                placeholder="+15551234567"
+                value={draft.real_from_number ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, real_from_number: e.target.value })
+                }
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="grid gap-1.5 text-sm">
+              Release allowlist (comma-separated — required for any release)
+              <Input
+                placeholder="+64211234567"
+                value={(draft.release_allowlist ?? []).join(", ")}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    release_allowlist: e.target.value
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              Auto-forward every outbound message to (must be allowlisted)
+              <Input
+                placeholder="empty = off"
+                value={draft.auto_forward_to ?? ""}
+                onChange={(e) =>
+                  setDraft({ ...draft, auto_forward_to: e.target.value })
+                }
+              />
+            </label>
+          </div>
+          <label className="grid gap-1.5 text-sm">
+            Capture webhook URL (JSON POST for every captured message)
+            <Input
+              placeholder="http://localhost:9000/on-sms"
+              value={draft.capture_webhook_url ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, capture_webhook_url: e.target.value })
+              }
+            />
+          </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Tags & housekeeping</CardTitle>
           <CardDescription>
             Auto-tag rules label new messages for manual testing (Mailpit
