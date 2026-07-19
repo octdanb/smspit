@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*.*.*"]
+    # Release tags: canonical form is v0.2.0, but V0.2.0 and bare 0.2.0
+    # also trigger and publish correctly (both mistakes have happened).
+    tags: ["v*.*.*", "V*.*.*", "[0-9]*.[0-9]*.[0-9]*"]
   pull_request:
 
 permissions:
@@ -133,8 +135,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Semver image tags come from git tags: pushing v1.2.3 publishes
-      # 1.2.3, 1.2, 1 (and latest from the default branch).
+      # Semver image tags come from git tags: pushing v1.2.3 (or V1.2.3 or
+      # 1.2.3) publishes 1.2.3, 1.2, 1 (and latest from the default branch).
+      # type=match instead of type=semver so the v prefix is optional and
+      # case-insensitive.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -142,9 +146,9 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=match,pattern=^[vV]?(\d+\.\d+\.\d+)$,group=1
+            type=match,pattern=^[vV]?(\d+\.\d+)\.\d+$,group=1
+            type=match,pattern=^[vV]?(\d+)\.\d+\.\d+$,group=1
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 

@@ -178,10 +178,11 @@ Then the Docker image builds (multi-arch `linux/amd64` + `linux/arm64` on pushes
 the image is published to GHCR as `ghcr.io/<owner>/octavenz-smspit:latest` (+ a `sha-…` tag).
 
 Releases are semver git tags: pushing `v1.2.3` publishes the image tagged `1.2.3`, `1.2`, and
-`1`:
+`1` (the workflow also tolerates `V1.2.3` and bare `1.2.3`, but lowercase `v` is the
+convention):
 
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.2.0 && git push origin v0.2.0
 ```
 
 ## Dashboard workflow features
