@@ -1,0 +1,13 @@
+{
+  "name": "smspit-conformance-node",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Runs the real twilio-node SDK against a live smspit instance",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "twilio": "^5.3.0"
+  }
+}

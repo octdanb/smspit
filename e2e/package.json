@@ -1,0 +1,13 @@
+{
+  "name": "smspit-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Browser E2E suite for the smspit dashboard",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

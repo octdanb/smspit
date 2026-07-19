@@ -307,6 +307,83 @@ async def cancel_scheduled(sid: str, session: Session = Depends(get_session)) ->
     return message_to_internal(session, message)
 
 
+class SeedMessage(BaseModel):
+    from_number: str
+    to_number: str
+    body: str
+    direction: str = "outbound-api"  # outbound-api | inbound
+    tags: list[str] = []
+
+
+class SeedPayload(BaseModel):
+    messages: list[SeedMessage] | None = None  # omit for the demo preset
+
+
+DEMO_SEED = [
+    SeedMessage(
+        from_number="+15550100001",
+        to_number="+15551230001",
+        body="Welcome to smspit! Your verification code is 482913",
+        tags=["otp"],
+    ),
+    SeedMessage(
+        from_number="+15551230001",
+        to_number="+15550100001",
+        body="Thanks, signed up!",
+        direction="inbound",
+    ),
+    SeedMessage(
+        from_number="+15550100001",
+        to_number="+15551230002",
+        body="Spring sale starts tomorrow — 20% off everything.",
+        tags=["campaign:spring"],
+    ),
+    SeedMessage(
+        from_number="+15551230002",
+        to_number="+15550100001",
+        body="STOP",
+        direction="inbound",
+    ),
+    SeedMessage(
+        from_number="+15550100001",
+        to_number="+15551230003",
+        body="Your parcel is out for delivery 📦",
+        tags=["shipping"],
+    ),
+]
+
+
+@router.post("/seed", status_code=201)
+async def seed(payload: SeedPayload | None = None, session: Session = Depends(get_session)) -> dict:
+    """Load fixture data (demo preset by default) for screenshots and demos.
+
+    Seeded messages skip lifecycle simulation and webhooks: outbound arrive
+    as delivered, inbound as received.
+    """
+    seeds = (payload.messages if payload and payload.messages else None) or DEMO_SEED
+    created = []
+    for seed_message in seeds:
+        message = await inbound.record_message(
+            session,
+            account_sid=get_settings(session).account_sid,
+            direction=seed_message.direction,
+            from_number=seed_message.from_number,
+            to_number=seed_message.to_number,
+            body=seed_message.body,
+            status="received" if seed_message.direction == "inbound" else "delivered",
+        )
+        if seed_message.direction != "inbound":
+            message.date_sent = message.date_created
+            message.price = f"-{0.0075 * message.num_segments:.5f}"
+            session.add(message)
+            session.commit()
+        if seed_message.tags:
+            tags.set_tags(session, message.sid, seed_message.tags)
+        created.append(message.sid)
+    await manager.broadcast("messages.cleared", {"number": None})  # full refresh
+    return {"created": len(created), "sids": created}
+
+
 @router.get("/numbers/{number}/latest-code")
 def latest_code(
     number: str,
@@ -454,6 +531,9 @@ def settings_to_json(settings) -> dict:
         "auto_tag_rules": json.loads(settings.auto_tag_rules or "[]"),
         "retention_max_age_hours": settings.retention_max_age_hours,
         "retention_max_messages": settings.retention_max_messages,
+        "webhook_latency_ms": settings.webhook_latency_ms,
+        "webhook_failure_rate": settings.webhook_failure_rate,
+        "webhook_retry_count": settings.webhook_retry_count,
     }
 
 
@@ -488,6 +568,9 @@ class SettingsUpdate(BaseModel):
     auto_tag_rules: list[dict] | None = None
     retention_max_age_hours: int | None = None
     retention_max_messages: int | None = None
+    webhook_latency_ms: int | None = None
+    webhook_failure_rate: float | None = None
+    webhook_retry_count: int | None = None
 
 
 @router.get("/settings")
