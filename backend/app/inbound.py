@@ -13,7 +13,7 @@ import secrets
 from fastapi import HTTPException
 from sqlmodel import Session, col, select
 
-from . import lifecycle, media, optout, webhooks
+from . import lifecycle, media, optout, tags, webhooks
 from .db import get_settings
 from .models import IncomingPhoneNumber, Message, MessagingService, WebhookDelivery
 from .segments import segment_count
@@ -55,6 +55,7 @@ async def record_message(
     session.commit()
     session.refresh(message)
     media.create_media_items(session, message.sid, account_sid, media_urls)
+    tags.apply_auto_tags(session, message)
 
     from .internal_api import counterparty, message_to_internal
 

@@ -1,16 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Ban, Trash2 } from "lucide-react";
+import { Ban, Download, Trash2 } from "lucide-react";
 
 import {
   clearThread,
+  exportUrl,
   fetchLatestCode,
   fetchThread,
+  markThreadRead,
   setOptOut,
 } from "@/api/client";
 import { CopyChip } from "@/components/copy-chip";
 import { MessageBubble } from "@/components/message-bubble";
+import { MessageDetail } from "@/components/message-detail";
 import { ReplyBox } from "@/components/reply-box";
 import { VerificationsPanel } from "@/components/verifications-panel";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +63,18 @@ function ThreadView() {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [messageCount, number]);
 
+  // Opening the thread (and every new message while it's open) marks it read.
+  useEffect(() => {
+    if (messageCount > 0) {
+      markThreadRead(number).then(() =>
+        queryClient.invalidateQueries({ queryKey: ["numbers"] }),
+      );
+    }
+  }, [messageCount, number, queryClient]);
+
+  const [selectedSid, setSelectedSid] = useState<string | null>(null);
+  useEffect(() => setSelectedSid(null), [number]);
+
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b px-4 py-3">
@@ -78,6 +93,17 @@ function ThreadView() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Export this thread as JSON"
+            asChild
+          >
+            <a href={exportUrl("json", number)} download>
+              <Download />
+              Export
+            </a>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -104,21 +130,35 @@ function ThreadView() {
         </div>
       </header>
       <VerificationsPanel number={number} />
-      <div
-        ref={scroller}
-        className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
-      >
-        {thread.isPending && (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            ref={scroller}
+            className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
+          >
+            {thread.isPending && (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            )}
+            {thread.isError && (
+              <p className="text-sm text-destructive">Failed to load thread.</p>
+            )}
+            {thread.data?.messages.map((message) => (
+              <MessageBubble
+                key={message.sid}
+                message={message}
+                onSelect={setSelectedSid}
+              />
+            ))}
+          </div>
+          <ReplyBox number={number} />
+        </div>
+        {selectedSid && (
+          <MessageDetail
+            sid={selectedSid}
+            onClose={() => setSelectedSid(null)}
+          />
         )}
-        {thread.isError && (
-          <p className="text-sm text-destructive">Failed to load thread.</p>
-        )}
-        {thread.data?.messages.map((message) => (
-          <MessageBubble key={message.sid} message={message} />
-        ))}
       </div>
-      <ReplyBox number={number} />
     </div>
   );
 }

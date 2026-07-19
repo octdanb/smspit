@@ -13,7 +13,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, col, func, select
 
-from . import lifecycle, media, optout
+from . import lifecycle, media, optout, tags
 from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
@@ -285,6 +285,7 @@ async def create_message(
     session.commit()
     session.refresh(message)
     media.create_media_items(session, message.sid, account_sid, media_urls)
+    tags.apply_auto_tags(session, message, single)
 
     await manager.broadcast(
         "message.created",

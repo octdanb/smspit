@@ -1,10 +1,21 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { MessageSquareText, Moon, Settings, Sun, Webhook } from "lucide-react";
+import {
+  CalendarClock,
+  KeyRound,
+  MessageSquareText,
+  Moon,
+  Settings,
+  Sun,
+  Webhook,
+} from "lucide-react";
 
+import { fetchNumbers, setDashboardToken } from "@/api/client";
 import { useLiveUpdates, type LiveStatus } from "@/api/ws";
 import { NumberSidebar } from "@/components/number-sidebar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { applyTheme, initialTheme, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +29,35 @@ const statusStyles: Record<LiveStatus, { dot: string; label: string }> = {
   offline: { dot: "bg-destructive", label: "offline" },
 };
 
+function TokenGate({ onSubmit }: { onSubmit: (token: string) => void }) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="flex h-screen flex-col items-center justify-center gap-3 p-8">
+      <KeyRound className="size-8 text-muted-foreground" />
+      <h2 className="font-medium">Dashboard token required</h2>
+      <p className="max-w-sm text-center text-sm text-muted-foreground">
+        This smspit instance is protected (SMSPIT_DASHBOARD_TOKEN). Enter the
+        token to continue.
+      </p>
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (value.trim()) onSubmit(value.trim());
+        }}
+      >
+        <Input
+          type="password"
+          placeholder="token"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <Button type="submit">Unlock</Button>
+      </form>
+    </div>
+  );
+}
+
 function RootLayout() {
   const status = useLiveUpdates();
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -25,6 +65,32 @@ function RootLayout() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // A ?token= in the URL stores the dashboard token (handy first-visit link).
+  useEffect(() => {
+    const urlToken = new URLSearchParams(location.search).get("token");
+    if (urlToken) {
+      setDashboardToken(urlToken);
+      history.replaceState(null, "", location.pathname);
+    }
+  }, []);
+
+  // Probe an authed endpoint; a 401 means the instance wants a token.
+  const probe = useQuery({
+    queryKey: ["auth-probe"],
+    queryFn: () => fetchNumbers(),
+    retry: false,
+  });
+  if (probe.isError && probe.error.name === "UnauthorizedError") {
+    return (
+      <TokenGate
+        onSubmit={(token) => {
+          setDashboardToken(token);
+          location.reload();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -37,6 +103,13 @@ function RootLayout() {
           Twilio-compatible SMS mock
         </span>
         <nav className="ml-auto flex items-center gap-1">
+          <Link
+            to="/scheduled"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"
+          >
+            <CalendarClock className="size-4" />
+            Scheduled
+          </Link>
           <Link
             to="/webhooks"
             className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground [&.active]:text-foreground"

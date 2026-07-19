@@ -100,6 +100,26 @@ class Settings(SQLModel, table=True):
     trial_mode: bool = False  # sends allowed only to verified_numbers (21608)
     verified_numbers: str = "[]"  # JSON list of E.164 numbers, used by trial_mode
     rate_limit_per_minute: int = 0  # 0 = off; otherwise 429/20429 past the limit
+    # Phase 10: dashboard & workflow.
+    # JSON list of {"tag": str, "to_suffix"?: str, "from_suffix"?: str, "body_regex"?: str}
+    auto_tag_rules: str = "[]"
+    retention_max_age_hours: int = 0  # 0 = keep forever
+    retention_max_messages: int = 0  # 0 = unlimited
+
+
+class MessageTag(SQLModel, table=True):
+    """A tag on a message (Mailpit-style, for organizing manual testing)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    message_sid: str = Field(index=True)
+    tag: str = Field(index=True)
+
+
+class ThreadRead(SQLModel, table=True):
+    """Read-state per thread: messages newer than last_read_at count as unread."""
+
+    number: str = Field(primary_key=True)
+    last_read_at: datetime = Field(default_factory=utcnow)
 
 
 class MessagingService(SQLModel, table=True):

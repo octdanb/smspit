@@ -1,15 +1,27 @@
 """Internal REST API used by the dashboard and test automation."""
 
+import csv
+import io
 import json
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import Response as FastAPIResponse
 from pydantic import BaseModel
 from sqlmodel import Session, col, delete, func, or_, select
 
-from . import inbound, media, optout, otp, webhooks
+from . import inbound, media, optout, otp, tags, webhooks
 from .db import get_session, get_settings
-from .models import MediaItem, Message, OptOut, Verification, VerifyService, WebhookDelivery, utcnow
+from .models import (
+    MediaItem,
+    Message,
+    OptOut,
+    ThreadRead,
+    Verification,
+    VerifyService,
+    WebhookDelivery,
+    utcnow,
+)
 from .ws import manager
 
 router = APIRouter(prefix="/api")
@@ -24,6 +36,7 @@ def iso(dt: datetime | None) -> str | None:
 def message_to_internal(session: Session, message: Message) -> dict:
     media_items = media.media_for_message(session, message.sid) if message.num_media > 0 else []
     return {
+        "tags": tags.tags_for(session, message.sid),
         "sid": message.sid,
         "direction": message.direction,
         "from_number": message.from_number,
@@ -68,7 +81,17 @@ def list_numbers(
         for pair in session.exec(select(OptOut).where(OptOut.opted_out == True)).all()  # noqa: E712
     }
 
-    query = (q or "").strip().lower()
+    # `tag:foo` tokens in the query filter by tag; remaining text searches
+    # numbers and full message bodies.
+    raw_query = (q or "").strip().lower()
+    tag_filters = {
+        token.removeprefix("tag:") for token in raw_query.split() if token.startswith("tag:")
+    }
+    query = " ".join(t for t in raw_query.split() if not t.startswith("tag:"))
+
+    message_tags = tags.tags_for_many(session, [m.sid for m in messages])
+    read_marks = {row.number: row.last_read_at for row in session.exec(select(ThreadRead)).all()}
+
     matching_numbers: set[str] = set()
     threads: dict[str, dict] = {}
     for message in messages:
@@ -77,9 +100,19 @@ def list_numbers(
             matching_numbers.add(number)
         thread = threads.setdefault(
             number,
-            {"number": number, "message_count": 0, "opted_out": number in opted_out_numbers},
+            {
+                "number": number,
+                "message_count": 0,
+                "unread_count": 0,
+                "opted_out": number in opted_out_numbers,
+                "tags": set(),
+            },
         )
         thread["message_count"] += 1
+        thread["tags"].update(message_tags.get(message.sid, []))
+        last_read = read_marks.get(number)
+        if last_read is None or message.date_created > last_read:
+            thread["unread_count"] += 1
         thread["last_message"] = {
             "sid": message.sid,
             "body": message.body,
@@ -88,9 +121,15 @@ def list_numbers(
             "date_created": iso(message.date_created),
         }
 
-    results = threads.values()
+    results = list(threads.values())
     if query:
         results = [t for t in results if t["number"] in matching_numbers]
+    if tag_filters:
+        results = [
+            t for t in results if all(tag in {x.lower() for x in t["tags"]} for tag in tag_filters)
+        ]
+    for thread in results:
+        thread["tags"] = sorted(thread["tags"])
     return sorted(
         results,
         key=lambda t: t["last_message"]["date_created"],
@@ -124,6 +163,148 @@ def thread_messages(
         "page": page,
         "page_size": page_size,
     }
+
+
+@router.post("/numbers/{number}/read", status_code=204)
+def mark_thread_read(number: str, session: Session = Depends(get_session)) -> None:
+    mark = session.get(ThreadRead, number)
+    if mark is None:
+        mark = ThreadRead(number=number)
+    mark.last_read_at = utcnow()
+    session.add(mark)
+    session.commit()
+
+
+@router.get("/tags")
+def list_tags(session: Session = Depends(get_session)) -> list[dict]:
+    return tags.all_tags(session)
+
+
+class TagsUpdate(BaseModel):
+    tags: list[str]
+
+
+@router.put("/messages/{sid}/tags")
+async def update_message_tags(
+    sid: str, payload: TagsUpdate, session: Session = Depends(get_session)
+) -> dict:
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    updated = tags.set_tags(session, sid, payload.tags)
+    await manager.broadcast(
+        "tags.changed", {"number": counterparty(message), "tags": updated, "sid": sid}
+    )
+    return {"sid": sid, "tags": updated}
+
+
+@router.get("/messages/{sid}")
+def message_detail(sid: str, session: Session = Depends(get_session)) -> dict:
+    """Everything the detail drawer needs: internal + Twilio shape + raw params."""
+    from .twilio_api import message_to_json
+
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {
+        "message": message_to_internal(session, message),
+        "twilio": message_to_json(message),
+        "raw_params": json.loads(message.raw_params or "{}"),
+    }
+
+
+@router.delete("/messages/{sid}", status_code=204)
+async def delete_single_message(sid: str, session: Session = Depends(get_session)) -> None:
+    """Dashboard delete: unlike the Twilio endpoint, works in any status."""
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    number = counterparty(message)
+    tags.delete_tags_for_messages(session, [sid])
+    for item in media.media_for_message(session, sid):
+        session.delete(item)
+    session.delete(message)
+    session.commit()
+    await manager.broadcast("messages.cleared", {"number": number})
+
+
+EXPORT_COLUMNS = (
+    "sid",
+    "direction",
+    "from_number",
+    "to_number",
+    "body",
+    "status",
+    "error_code",
+    "num_segments",
+    "num_media",
+    "channel",
+    "tags",
+    "date_created",
+    "date_sent",
+)
+
+
+@router.get("/export")
+def export_messages(
+    session: Session = Depends(get_session),
+    format: str = Query("json", pattern="^(json|csv)$"),
+    number: str | None = Query(None),
+) -> FastAPIResponse:
+    """Download all messages (or one thread) as JSON or CSV."""
+    stmt = select(Message).order_by(col(Message.date_created).asc(), col(Message.id).asc())
+    if number:
+        stmt = stmt.where(or_(Message.to_number == number, Message.from_number == number))
+    rows = [message_to_internal(session, m) for m in session.exec(stmt).all()]
+
+    stamp = utcnow().strftime("%Y%m%d-%H%M%S")
+    name = f"smspit-{number or 'all'}-{stamp}".replace("+", "")
+    if format == "json":
+        return FastAPIResponse(
+            content=json.dumps(rows, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{name}.json"'},
+        )
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(EXPORT_COLUMNS)
+    for row in rows:
+        writer.writerow(
+            [
+                ",".join(row[column]) if column == "tags" else row[column]
+                for column in EXPORT_COLUMNS
+            ]
+        )
+    return FastAPIResponse(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}.csv"'},
+    )
+
+
+@router.get("/scheduled")
+def list_scheduled(session: Session = Depends(get_session)) -> list[dict]:
+    messages = session.exec(
+        select(Message).where(Message.status == "scheduled").order_by(col(Message.send_at).asc())
+    ).all()
+    return [message_to_internal(session, m) | {"send_at": iso(m.send_at)} for m in messages]
+
+
+@router.post("/scheduled/{sid}/cancel")
+async def cancel_scheduled(sid: str, session: Session = Depends(get_session)) -> dict:
+    message = session.exec(select(Message).where(Message.sid == sid)).first()
+    if message is None or message.status != "scheduled":
+        raise HTTPException(status_code=404, detail="No scheduled message with that sid")
+    message.status = "canceled"
+    message.date_updated = utcnow()
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    await manager.broadcast(
+        "message.status_changed",
+        {"number": counterparty(message), "message": message_to_internal(session, message)},
+    )
+    return message_to_internal(session, message)
 
 
 @router.get("/numbers/{number}/latest-code")
@@ -270,6 +451,9 @@ def settings_to_json(settings) -> dict:
         "trial_mode": settings.trial_mode,
         "verified_numbers": json.loads(settings.verified_numbers or "[]"),
         "rate_limit_per_minute": settings.rate_limit_per_minute,
+        "auto_tag_rules": json.loads(settings.auto_tag_rules or "[]"),
+        "retention_max_age_hours": settings.retention_max_age_hours,
+        "retention_max_messages": settings.retention_max_messages,
     }
 
 
@@ -301,6 +485,9 @@ class SettingsUpdate(BaseModel):
     trial_mode: bool | None = None
     verified_numbers: list[str] | None = None
     rate_limit_per_minute: int | None = None
+    auto_tag_rules: list[dict] | None = None
+    retention_max_age_hours: int | None = None
+    retention_max_messages: int | None = None
 
 
 @router.get("/settings")
@@ -319,6 +506,7 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
             "webhook_geo_params",
             "lookup_line_types",
             "verified_numbers",
+            "auto_tag_rules",
         ):
             setattr(settings, key, json.dumps(value))
         else:
@@ -350,13 +538,35 @@ def webhook_log(
     session: Session = Depends(get_session),
     page: int = Query(0, ge=0),
     page_size: int = Query(50, ge=1, le=500),
+    kind: str | None = Query(None),
+    message_sid: str | None = Query(None),
+    result: str | None = Query(None, pattern="^(success|error)$"),
 ) -> dict:
-    total = session.exec(select(func.count()).select_from(WebhookDelivery)).one()
+    conditions = []
+    if kind:
+        conditions.append(WebhookDelivery.kind == kind)
+    if message_sid:
+        conditions.append(WebhookDelivery.message_sid == message_sid)
+    if result == "success":
+        conditions.append(col(WebhookDelivery.response_status).between(200, 299))
+    elif result == "error":
+        conditions.append(
+            or_(
+                col(WebhookDelivery.error).is_not(None),
+                col(WebhookDelivery.response_status) < 200,
+                col(WebhookDelivery.response_status) >= 300,
+            )
+        )
+
+    count_stmt = select(func.count()).select_from(WebhookDelivery)
+    list_stmt = select(WebhookDelivery)
+    for condition in conditions:
+        count_stmt = count_stmt.where(condition)
+        list_stmt = list_stmt.where(condition)
+
+    total = session.exec(count_stmt).one()
     deliveries = session.exec(
-        select(WebhookDelivery)
-        .order_by(col(WebhookDelivery.id).desc())
-        .offset(page * page_size)
-        .limit(page_size)
+        list_stmt.order_by(col(WebhookDelivery.id).desc()).offset(page * page_size).limit(page_size)
     ).all()
     return {
         "deliveries": [delivery_to_json(d) for d in deliveries],
