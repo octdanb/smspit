@@ -20,6 +20,23 @@ variable — no code changes.
 All webhooks (inbound messages + status callbacks) are signed with a real `X-Twilio-Signature`,
 so Twilio's `RequestValidator` middleware passes unchanged.
 
+## See it in action
+
+An app sends an OTP via the Twilio API, it appears live in the dashboard (auto-tagged `otp`,
+code copy chip), a reply typed in the dashboard hits the app's webhook, and the app's TwiML
+auto-reply lands back in the thread:
+
+![smspit demo: send, live updates, reply, TwiML auto-reply, detail drawer](docs/demo.gif)
+
+| | |
+|---|---|
+| ![Inbox with threads, tags, and unread counts](docs/inbox.png) **Inbox** — live threads, tags, unread counts, search operators | ![Message detail drawer with Twilio JSON and encoding check](docs/message-detail.png) **Detail drawer** — full Twilio-shaped JSON, tags, encoding check |
+| ![Webhook delivery log with signed payloads](docs/webhook-log.png) **Webhook log** — every signed delivery with payload, response, and retry | ![Dark mode](docs/dark-mode.png) **Dark mode** |
+
+<img src="docs/mobile.png" width="280" alt="Responsive mobile thread view">
+
+**Responsive** — check OTPs and threads from a phone on a shared UAT instance.
+
 ## Quickstart
 
 ```sh
