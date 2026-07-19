@@ -15,7 +15,7 @@ from sqlmodel import Session, col, select
 
 from . import lifecycle, media, optout, webhooks
 from .db import get_settings
-from .models import Message, WebhookDelivery
+from .models import Message, MessagingService, WebhookDelivery
 from .segments import segment_count
 from .twiml import looks_like_twiml, parse_twiml
 from .ws import manager
@@ -31,6 +31,7 @@ async def record_message(
     body: str,
     media_urls: list[str] | None = None,
     status: str,
+    messaging_service_sid: str | None = None,
 ) -> Message:
     """Create a message + its media items and broadcast message.created."""
     media_urls = media_urls or []
@@ -44,6 +45,7 @@ async def record_message(
         to_number=to_number,
         body=body,
         status=status,
+        messaging_service_sid=messaging_service_sid,
         num_segments=num_segments,
         num_media=len(media_urls),
         encoding=encoding,
@@ -93,6 +95,22 @@ def infer_app_number(session: Session, number: str) -> str | None:
     if latest is None:
         return None
     return latest.from_number if latest.to_number == number else latest.to_number
+
+
+def service_for_thread(session: Session, number: str) -> MessagingService | None:
+    """The Messaging Service that last messaged this number, if any."""
+    latest = session.exec(
+        select(Message)
+        .where(
+            Message.to_number == number,
+            col(Message.messaging_service_sid).is_not(None),
+            col(Message.direction).startswith("outbound"),
+        )
+        .order_by(col(Message.date_created).desc(), col(Message.id).desc())
+    ).first()
+    if latest is None:
+        return None
+    return session.get(MessagingService, latest.messaging_service_sid)
 
 
 async def _handle_twiml_response(
@@ -166,6 +184,17 @@ async def handle_reply(
     config = optout.load_config(session)
     optout_type = optout.match_keyword(body, config)
 
+    # Inbound messages to a service-managed number carry its MessagingServiceSid
+    # and can route to the service's InboundRequestUrl instead of the global one.
+    service = service_for_thread(session, number)
+    webhook_url = settings.inbound_webhook_url
+    if (
+        service is not None
+        and service.inbound_request_url
+        and not service.use_inbound_webhook_on_number
+    ):
+        webhook_url = service.inbound_request_url
+
     message = await record_message(
         session,
         account_sid=settings.account_sid,
@@ -175,6 +204,7 @@ async def handle_reply(
         body=body,
         media_urls=media_urls,
         status="received",
+        messaging_service_sid=service.sid if service is not None else None,
     )
 
     if optout_type == "STOP":
@@ -203,7 +233,7 @@ async def handle_reply(
             body=config["confirmations"]["help"],
         )
 
-    if settings.inbound_webhook_url:
+    if webhook_url:
         geo_params = {}
         try:
             geo_params.update(json.loads(settings.webhook_geo_params or "{}"))
@@ -217,9 +247,7 @@ async def handle_reply(
             geo_params,
             optout_type,
         )
-        delivery = await webhooks.deliver(
-            "inbound", settings.inbound_webhook_url, params, message.sid
-        )
+        delivery = await webhooks.deliver("inbound", webhook_url, params, message.sid)
         await _handle_twiml_response(session, delivery, number, app_number)
 
     return message

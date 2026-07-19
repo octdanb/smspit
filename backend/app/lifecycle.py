@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from . import webhooks
 from .db import get_engine, get_settings
-from .models import Message, utcnow
+from .models import Message, MessagingService, utcnow
 from .ws import manager
 
 TERMINAL_STATUSES = {"delivered", "undelivered", "failed", "received", "canceled"}
@@ -27,6 +27,7 @@ CALLBACK_STATUSES = {"queued", "sending", "sent", "delivered", "undelivered", "f
 PRICE_PER_SEGMENT = 0.0075
 
 ERROR_MESSAGES = {
+    21606: "The 'From' phone number provided is not a valid message-capable phone number.",
     30003: "Unreachable destination handset",
     30004: "Message blocked",
     30005: "Unknown destination handset",
@@ -48,7 +49,7 @@ def resume_pending() -> None:
             return
         pending = session.exec(
             select(Message.sid).where(
-                Message.status.in_(("scheduled", "queued", "sending", "sent"))  # type: ignore[attr-defined]
+                Message.status.in_(("scheduled", "accepted", "queued", "sending", "sent"))  # type: ignore[attr-defined]
             )
         ).all()
     for sid in pending:
@@ -68,6 +69,9 @@ def _next_transition(
 ) -> tuple[str, int | None] | None:
     """(next_status, error_code) for one step of the chain, or None when done."""
     if message.status == "scheduled":
+        return "queued", None
+    if message.status == "accepted":
+        # Sender selection happens in _run (needs the service pool).
         return "queued", None
     if message.status == "queued":
         rule = _forced_rule(message, forced_rules)
@@ -104,16 +108,40 @@ async def _run(sid: str) -> None:
         else:
             await asyncio.sleep(delay)
 
+        new_from: str | None = None
+        if message.status == "accepted":
+            # Pick a From out of the Messaging Service's sender pool.
+            from .messaging_v1 import select_sender
+
+            with Session(get_engine()) as session:
+                service_message = session.exec(select(Message).where(Message.sid == sid)).first()
+                if service_message is None or service_message.status != "accepted":
+                    return
+                service = session.get(MessagingService, service_message.messaging_service_sid)
+                new_from = (
+                    select_sender(session, service, service_message.to_number) if service else None
+                )
+            if new_from is None:
+                if not await _apply_transition(sid, "accepted", "failed", 21606):
+                    return
+                continue
+
         step = _next_transition(message, forced_rules, settings.failure_rate)
         if step is None:
             return
         next_status, error_code = step
-        if not await _apply_transition(sid, message.status, next_status, error_code):
+        if not await _apply_transition(
+            sid, message.status, next_status, error_code, new_from=new_from
+        ):
             return
 
 
 async def _apply_transition(
-    sid: str, expected_current: str, next_status: str, error_code: int | None
+    sid: str,
+    expected_current: str,
+    next_status: str,
+    error_code: int | None,
+    new_from: str | None = None,
 ) -> bool:
     """Atomically move a message to next_status; returns False if it changed under us."""
     with Session(get_engine()) as session:
@@ -122,6 +150,8 @@ async def _apply_transition(
             # Canceled or mutated externally while we slept — stop simulating.
             return False
 
+        if new_from is not None:
+            message.from_number = new_from
         message.status = next_status
         message.date_updated = utcnow()
         if next_status == "sent":

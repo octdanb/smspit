@@ -55,8 +55,9 @@ segment math), live dashboard updates over WebSocket, delivery lifecycle simulat
 (queued → sending → sent → delivered, configurable delays/failures), status callbacks signed
 with X-Twilio-Signature, webhook delivery log with retry, message update (redact/cancel) and
 delete, scheduled sends, two-way messaging (inbound webhooks, TwiML auto-replies, the
-STOP/START/HELP opt-out engine, MMS media), and verification support: OTP extraction with
-`GET /api/numbers/{number}/latest-code` for E2E tests, Twilio Verify v2 emulation
-(Services / Verifications / VerificationCheck with attempt limits and expiry), and code
-highlight/copy in the dashboard. Next per [SPEC.md §12](SPEC.md#12-build-phases): Messaging
-Services v1 and Lookup v2, then polish.
+STOP/START/HELP opt-out engine, MMS media), verification support (OTP extraction,
+`latest-code`, Twilio Verify v2), Messaging Services v1 (sender pools with sticky sender and
+area-code geomatch, the `accepted` status flow, service-level callbacks and inbound routing),
+and Lookup v2 (real number parsing via `phonenumbers`, configurable line-type intelligence).
+Remaining per [SPEC.md §12](SPEC.md#12-build-phases): phase 8 polish (full strict mode, dark
+mode, SDK-switching docs).

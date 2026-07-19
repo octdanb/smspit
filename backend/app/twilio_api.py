@@ -15,7 +15,7 @@ from . import lifecycle, media, optout
 from .db import get_session, get_settings
 from .errors import TwilioError, auth_error, not_found
 from .internal_api import counterparty, message_to_internal
-from .models import MediaItem, Message, utcnow
+from .models import MediaItem, Message, MessagingService, utcnow
 from .segments import segment_count
 from .ws import manager
 
@@ -113,27 +113,31 @@ async def create_message(
         raise TwilioError(21604, "A 'To' phone number is required.")
     if not from_ and not messaging_service_sid:
         raise TwilioError(21603, "A 'From' phone number is required.")
-    if not from_:
-        # Messaging Service sender pools land in phase 7.
-        raise TwilioError(
-            21606,
-            "The From phone number provided is not a valid, message-capable phone number.",
-        )
+
+    service: MessagingService | None = None
+    if messaging_service_sid:
+        service = session.get(MessagingService, messaging_service_sid)
+        if service is None:
+            raise TwilioError(21701, "The Messaging Service was not found.", http_status=404)
+
     if not body and not media_urls and not single.get("ContentSid"):
         raise TwilioError(21602, "Message body or media urls are required.")
     if len(body) > 1600:
         raise TwilioError(21617, "The concatenated message body exceeds the 1600 character limit.")
 
     settings = get_settings(session)
-    if settings.enforce_optouts and optout.is_opted_out(session, to, from_):
+    if from_ and settings.enforce_optouts and optout.is_opted_out(session, to, from_):
         raise TwilioError(21610, "Attempt to send to unsubscribed recipient")
 
-    smart_encoded = parse_bool(single.get("SmartEncoded"))
+    smart_encoded = parse_bool(single.get("SmartEncoded")) or (
+        service is not None and service.smart_encoding and "SmartEncoded" not in single
+    )
     encoding, num_segments = segment_count(body, smart_encoded=smart_encoded)
 
     schedule_type = single.get("ScheduleType") or None
     send_at = None
-    status = "queued"
+    # Service sends start as 'accepted' while the pool picks a From (lifecycle).
+    status = "accepted" if (service is not None and not from_) else "queued"
     if schedule_type is not None:
         if schedule_type != "fixed":
             raise TwilioError(20001, "ScheduleType must be 'fixed'.")
@@ -160,8 +164,12 @@ async def create_message(
         encoding=encoding,
         channel=channel,
         messaging_service_sid=messaging_service_sid,
-        validity_period=int(single.get("ValidityPeriod") or 36000),
-        status_callback_url=single.get("StatusCallback") or None,
+        validity_period=int(
+            single.get("ValidityPeriod")
+            or (service.validity_period if service is not None else 36000)
+        ),
+        status_callback_url=single.get("StatusCallback")
+        or (service.status_callback if service is not None else None),
         provide_feedback=parse_bool(single.get("ProvideFeedback")),
         raw_params=json.dumps(
             {key: values if len(values) > 1 else values[0] for key, values in params.items()}

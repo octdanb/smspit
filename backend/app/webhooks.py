@@ -122,6 +122,8 @@ def build_inbound_params(
         "SmsStatus": "received",
         "ApiVersion": API_VERSION,
     }
+    if message.messaging_service_sid:
+        params["MessagingServiceSid"] = message.messaging_service_sid
     for index, item in enumerate(media):
         params[f"MediaUrl{index}"] = f"{public_base_url.rstrip('/')}/api/media/{item.sid}"
         params[f"MediaContentType{index}"] = item.content_type

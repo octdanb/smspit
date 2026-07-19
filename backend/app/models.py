@@ -88,6 +88,44 @@ class Settings(SQLModel, table=True):
     webhook_geo_params: str = "{}"
     # Verify v2 (phase 6): how long a verification code stays valid.
     verify_ttl_seconds: int = 600
+    # Lookup v2 (phase 7): JSON dict {E164: line type} overriding the default
+    # "mobile" for line_type_intelligence (e.g. {"+15551234567": "nonFixedVoip"}).
+    lookup_line_types: str = "{}"
+
+
+class MessagingService(SQLModel, table=True):
+    """Twilio Messaging Service v1 (MG…) with its sender pool in ServiceSender."""
+
+    sid: str = Field(primary_key=True)
+    account_sid: str
+    friendly_name: str
+    inbound_request_url: str | None = None
+    inbound_method: str = "POST"
+    fallback_url: str | None = None
+    fallback_method: str = "POST"
+    status_callback: str | None = None
+    sticky_sender: bool = True
+    smart_encoding: bool = True
+    scan_message_content: str = "inherit"  # inherit | enable | disable
+    area_code_geomatch: bool = False
+    validity_period: int = 36000
+    usecase: str = "undeclared"
+    use_inbound_webhook_on_number: bool = False
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
+
+
+class ServiceSender(SQLModel, table=True):
+    """A sender pool entry: phone number, alphanumeric sender, or short code."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    sid: str = Field(unique=True, index=True)  # PN… | AI… | SC…
+    service_sid: str = Field(index=True)
+    kind: str  # phone_number | alpha_sender | short_code
+    value: str
+    country_code: str | None = None
+    date_created: datetime = Field(default_factory=utcnow)
+    date_updated: datetime = Field(default_factory=utcnow)
 
 
 class VerifyService(SQLModel, table=True):

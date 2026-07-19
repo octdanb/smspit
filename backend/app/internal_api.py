@@ -250,6 +250,7 @@ def settings_to_json(settings) -> dict:
         "optout_config": json.loads(settings.optout_config or "{}"),
         "webhook_geo_params": json.loads(settings.webhook_geo_params or "{}"),
         "verify_ttl_seconds": settings.verify_ttl_seconds,
+        "lookup_line_types": json.loads(settings.lookup_line_types or "{}"),
     }
 
 
@@ -273,6 +274,7 @@ class SettingsUpdate(BaseModel):
     optout_config: dict | None = None
     webhook_geo_params: dict[str, str] | None = None
     verify_ttl_seconds: int | None = None
+    lookup_line_types: dict[str, str] | None = None
 
 
 @router.get("/settings")
@@ -285,7 +287,7 @@ def update_settings(payload: SettingsUpdate, session: Session = Depends(get_sess
     settings = get_settings(session)
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
-        if key in ("forced_rules", "optout_config", "webhook_geo_params"):
+        if key in ("forced_rules", "optout_config", "webhook_geo_params", "lookup_line_types"):
             setattr(settings, key, json.dumps(value))
         else:
             setattr(settings, key, value)
