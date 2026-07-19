@@ -526,6 +526,50 @@ Inbox-style layout, dark mode supported:
 8. **Polish**: strict-mode completeness, search, dark mode, README with Twilio-switching docs
    (Python + Node SDK snippets), example Playwright/pytest E2E snippets.
 
+Phases 1–8 shipped in v0.1.0. The phases below came out of a post-v0.1.0 gap review against
+Twilio's real surface and Mailpit's feature set.
+
+9. **API fidelity completion**:
+   - Feedback subresource: `POST …/Messages/{Sid}/Feedback.json` (`Outcome`
+     `confirmed`|`unconfirmed`, requires `ProvideFeedback=true`) — currently advertised in
+     `subresource_uris` but unimplemented
+   - `ContentSid` + `ContentVariables`: render a plain-text body from the variables instead of
+     storing an empty body
+   - GET webhook delivery: honor `inbound_webhook_method` (currently stored but always POSTs),
+     including Twilio's query-param signature variant
+   - WhatsApp depth: 24-hour session window enforcement in strict mode (free-form send outside
+     the window → `63016`; `ContentSid` sends always pass) and `read` status simulation after
+     `delivered`
+   - Strict auth: accept API keys (`SK…` + secret) alongside `AC…` + token
+   - Real `PageSize`/`Page` pagination for the v1/v2 list envelopes and the Media list
+     (+ `DateCreated` filters)
+   - Messaging Service `fallback_url`: invoked when the inbound handler errors or returns non-2xx
+   - `IncomingPhoneNumbers` (2010-04-01) emulation: per-number `SmsUrl`/`SmsMethod`/
+     `StatusCallback`, with Twilio's routing precedence (service `InboundRequestUrl` vs
+     `UseInboundWebhookOnNumber` vs number `SmsUrl`)
+10. **Dashboard & workflow UX**:
+    - **Message tags** (Mailpit-style, for organizing manual testing): manual tags on
+      messages/threads plus auto-tag rules in settings (match To/From/body regex → tag);
+      tag chips in the sidebar and thread view; filter by tag in search (`tag:` prefix or
+      filter UI); Twilio's `Tags` send parameter surfaced as tags on the message; tags in the
+      internal API and WS events; `GET /api/tags` for the filter list
+    - Unread indicators per thread (read-state tracked when a thread is opened)
+    - Message detail drawer: full Twilio-shaped JSON, original request params (`raw_params`),
+      copy SID, per-message delete
+    - Retention: auto-purge setting (max message age / count), like Mailpit
+    - Export: download a thread or all messages as JSON/CSV
+    - Webhook log filters (kind, message, status) and a scheduled-messages view
+    - Optional dashboard auth token for shared/staging deployments
+11. **Conformance & distribution**:
+    - SDK conformance job in CI: run real `twilio-python` and `twilio-node` clients against the
+      container (send, paginate, fetch media, Verify flow, Lookup) — turns "Twilio-shaped" into
+      a tested guarantee
+    - Playwright E2E suite in CI (send → live update → reply → TwiML auto-reply → OTP copy)
+    - Multi-arch Docker images (`linux/amd64,linux/arm64`)
+    - Seed/fixture API (`POST /api/seed`) for demo data and screenshots
+    - Webhook chaos options: injectable delivery failures/latency and Twilio-style status
+      callback retries, for testing app-side resilience
+
 ## 13. Pointing SDKs / Apps at the Mock
 
 Everything is served on one port; route families are disambiguated by path
