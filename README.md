@@ -169,8 +169,8 @@ just lint      # ruff + oxlint
 ```
 
 Requires [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), Node 22+ with
-[pnpm](https://pnpm.io/) (`corepack enable`), and [caddy](https://caddyserver.com/docs/install);
-only Docker for `just up`.
+[pnpm](https://pnpm.io/) (`corepack enable`, or `npm install -g corepack` first on Node 25+),
+and [caddy](https://caddyserver.com/docs/install); only Docker for `just up`.
 
 CI ([ci.yml](.github/workflows/ci.yml)) runs lints, tests, dependency audits, the SDK
 conformance suites, and a Playwright E2E pass, then publishes a multi-arch image to GHCR.

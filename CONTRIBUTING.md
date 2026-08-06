@@ -6,8 +6,9 @@ Thanks for your interest! smspit is a Twilio-emulating SMS testing tool
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) (Python 3.11+)
-- Node 22+ with [pnpm](https://pnpm.io/) 10 (`corepack enable` picks up the
-  pinned version automatically)
+- Node 22+ with [pnpm](https://pnpm.io/) 10 — run `corepack enable` to pick up
+  the pinned version automatically (on Node 25+, which no longer bundles it,
+  `npm install -g corepack` first)
 - [just](https://github.com/casey/just) for the task runner
 - [caddy](https://caddyserver.com/docs/install) for `just dev`
 - Docker for `just up` / `just build`
