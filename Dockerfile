@@ -10,26 +10,33 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm run build
 
-# Stage 2: Python runtime serving API + static dashboard
-FROM python:3.14-slim
+# Stage 2: build the Python virtualenv with uv. Nothing from this stage except
+# the finished .venv reaches the runtime image, so uv itself (~50MB) and all
+# build tooling stay out of it.
+FROM python:3.14-slim AS backend
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /bin/uv
 WORKDIR /app
-
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/app/.venv \
-    PATH="/app/.venv/bin:$PATH" \
-    SMSPIT_STATIC_DIR=/app/static \
-    SMSPIT_DB_PATH=/data/smspit.db
-
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 # Install dependencies from the lockfile first (cached across code changes),
 # then the project itself — reproducible, unlike a loose `pip install .`.
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 COPY backend/app ./app
+# --no-editable installs the app as a real package inside the venv, so the
+# runtime stage needs only the venv (no source tree, no .pth back to /app).
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
+
+# Stage 3: minimal runtime — base Python + the prebuilt venv + static dashboard.
+FROM python:3.14-slim
+WORKDIR /app
+ENV PATH="/app/.venv/bin:$PATH" \
+    SMSPIT_STATIC_DIR=/app/static \
+    SMSPIT_DB_PATH=/data/smspit.db
+COPY --from=backend /app/.venv /app/.venv
 COPY --from=frontend /build/dist ./static
 
 # Run as an unprivileged user; /data is a volume it must own.
